@@ -5,10 +5,22 @@ import datetime
 def build_generator(img_shape,z_dim): # 生成器
 
     model = tf.keras.models.Sequential([
-        tf.keras.layers.Dense(128),# 全結合
+        tf.keras.layers.Dense(256 * 7 * 7),# 全結合
+        tf.keras.layers.Reshape((7,7,256)),# 7*7*256のテンソルに変換
+
+        tf.keras.layers.Conv2DTranspose(128, kernel_size=3,strides=2, padding="same"),# 転置畳み込み層により、7*7*256を14*14*128のテンソルに変換
+
+        tf.keras.layers.BatchNormalization(),# バッチ正規化
         tf.keras.layers.LeakyReLU(alpha=0.01), # LeakyReLUによる活性化
-        tf.keras.layers.Dense(28 * 28 * 1, activation="tanh"), # tanh関数を用いた出力層
-        tf.keras.layers.Reshape(img_shape) # 生成器の出力を画像サイズに合わせる
+
+        tf.keras.layers.Conv2DTranspose(64,kernel_size=3,strides=1, padding="same"),# 転置畳み込み層により14*14*128を14*14*64のテンソルに変換
+
+        tf.keras.layers.BatchNormalization(),# バッチ正規化
+        tf.keras.layers.LeakyReLU(alpha=0.01), # LeakyReLUによる活性化
+
+        tf.keras.layers.Conv2DTranspose(1,kernel_size=3,strides=2,padding="same"),# 転置畳み込み層により14*14*64を28*28*1のテンソルに変換
+
+        tf.keras.layers.Activation("tanh") # tanh関数を用いた出力層
     ])
 
     return model
@@ -16,9 +28,19 @@ def build_generator(img_shape,z_dim): # 生成器
 def build_discriminator(img_shape):
 
     model = tf.keras.models.Sequential([
-        tf.keras.layers.Flatten(),# 入力画像を1列に
-        tf.keras.layers.Dense(128),# 全結合
-        tf.keras.layers.LeakyReLU(alpha=0.01), # LeakyReLUによる活性化
+
+        tf.keras.layers.Conv2D(32,kernel_size=3 ,strides=2, input_shape=img_shape, padding="same"), # 28*28*1を14*14*32のテンソルにするたたみ込み層
+        tf.keras.layers.LeakyReLU(alpha=0.01),# LeakyReLUによる活性化
+
+        tf.keras.layers.Conv2D(64, kernel_size=3, strides=2, input_shape=img_shape, padding="same"),# 14*14*32を7*7*64のテンソルにするたたみ込み層
+        tf.keras.layers.BatchNormalization(),
+        tf.keras.layers.LeakyReLU(alpha=0.01),
+
+        tf.keras.layers.Conv2D(128, kernel_size=3, strides=2, input_shape=img_shape, padding="same"),# 7*7*64を3*3*128のテンソルにするたたみ込み層
+        tf.keras.layers.BatchNormalization(),
+        tf.keras.layers.LeakyReLU(alpha=0.01),
+
+        tf.keras.layers.Flatten(),
         tf.keras.layers.Dense(1,activation="sigmoid") # sigmoid関数を通して出力
     ])
 
@@ -114,7 +136,7 @@ def main():
     log_dir = "./logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     summary_writer = tf.summary.create_file_writer(logdir=log_dir)
 
-    iterations = 200000
+    iterations = 20000
     batch_size = 128
     sample_interval = 1000
 
