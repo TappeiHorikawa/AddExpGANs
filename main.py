@@ -2,7 +2,15 @@ import numpy as np
 import tensorflow as tf
 import datetime
 
-def build_generator(img_shape,z_dim): # 生成器
+img_rows = 28
+img_cols = 28
+channels = 1
+
+img_shape = (img_rows, img_cols, channels)
+
+z_dim = 100
+
+def build_generator(z_dim): # 生成器
 
     model = tf.keras.models.Sequential([
         tf.keras.layers.Dense(256 * 7 * 7),# 全結合
@@ -54,7 +62,20 @@ def build_gan(generator, discriminator):
 
     return model
 
-def train(iterations,batch_size,sample_interval, summary_writer,generator, discriminator, gan):
+discriminator = build_discriminator(img_shape)
+discriminator.compile(loss="binary_crossentropy",optimizer="Adam",metrics=["accuracy"])
+
+generator = build_generator(z_dim)
+
+discriminator.trainable = False # 生成器の構築中は識別器のパラメータを固定
+
+gan = build_gan(generator,discriminator) # 生成器の訓練のため、識別器は固定しGANモデルの構築とコンパイルをおこなう。
+gan.compile(loss="binary_crossentropy", optimizer="Adam")
+
+log_dir = "./logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+summary_writer = tf.summary.create_file_writer(logdir=log_dir)
+
+def train(iterations,batch_size,sample_interval):
     (X_train,_),(_,_) = tf.keras.datasets.mnist.load_data()
 
     X_train = X_train / 127.5 - 1.0 # [0,255]の範囲の画素値を[-1,1]にスケーリング
@@ -94,10 +115,10 @@ def train(iterations,batch_size,sample_interval, summary_writer,generator, discr
             print("%d [D loss: %f, acc.: %.2f%%] [G loss: %f]" % (iteration + 1, d_loss, 100.0 * accuracy, g_loss))
 
             # サンプル画像を生成し出力
-            sample_images(generator, summary_writer, iteration + 1)
+            sample_images(generator, iteration + 1)
 
-def sample_images(generator, summary_writer, step, image_grid_rows=4, image_grid_columns=4):
-    z_dim = 100
+def sample_images(generator, step, image_grid_rows=4, image_grid_columns=4):
+
     # ランダムノイズのサンプリング
     z = np.random.normal(0, 1, (image_grid_rows * image_grid_columns, z_dim))
 
@@ -113,34 +134,8 @@ def sample_images(generator, summary_writer, step, image_grid_rows=4, image_grid
         with summary_writer.as_default():
             tf.summary.image(name, tf.reshape(gen_imgs[i,:,:,0], [-1,28,28,1]), step=step, max_outputs=1)
 
-def main():
+iterations = 20000
+batch_size = 128
+sample_interval = 1000
 
-    img_rows = 28
-    img_cols = 28
-    channels = 1
-
-    img_shape = (img_rows, img_cols, channels)
-
-    z_dim = 100
-
-    discriminator = build_discriminator(img_shape)
-    discriminator.compile(loss="binary_crossentropy",optimizer="adam",metrics=["accuracy"])
-
-    generator = build_generator(img_shape,z_dim)
-
-    discriminator.trainable = False # 生成器の構築中は識別器のパラメータを固定
-
-    gan = build_gan(generator,discriminator) # 生成器の訓練のため、識別器は固定しGANモデルの構築とコンパイルをおこなう。
-    gan.compile(loss="binary_crossentropy", optimizer="adam")
-
-    log_dir = "./logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    summary_writer = tf.summary.create_file_writer(logdir=log_dir)
-
-    iterations = 20000
-    batch_size = 128
-    sample_interval = 1000
-
-    train(iterations, batch_size, sample_interval, summary_writer,generator, discriminator, gan)
-
-if __name__ == "__main__":
-    main()
+train(iterations, batch_size, sample_interval)

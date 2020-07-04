@@ -6,10 +6,10 @@
 ## 作成済みネットワーク
 
 - GAN(MNIST生成)
+- DCGAN(MNIST生成) __ノイズの生成が解消されないため一時中断__
 
 ## 作成予定ネットワーク
 
-- DCGAN
 - PGGAN
 - CGAN
 - CycleGAN
