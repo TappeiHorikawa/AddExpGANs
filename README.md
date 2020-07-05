@@ -7,10 +7,10 @@
 
 - GAN(MNIST生成)
 - DCGAN(MNIST生成) __ノイズの生成が解消されないため一時中断__
+- SGAN(MNISTクラス判定)
 
 ## 作成予定ネットワーク
 
-- SGAN
 - PGGAN
 - CGAN
 - CycleGAN

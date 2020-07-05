@@ -1,6 +1,7 @@
 import numpy as np
 import tensorflow as tf
 import datetime
+from keras import backend as K
 
 img_rows = 28
 img_cols = 28
@@ -9,6 +10,54 @@ channels = 1
 img_shape = (img_rows, img_cols, channels)
 
 z_dim = 100
+num_classes = 10
+
+
+class Dataset:
+    def __init__(self, num_labeled):
+        self.num_labeled = num_labeled
+
+        (self.x_train, self.y_train),(self.x_test,self.y_test) = tf.keras.datasets.mnist.load_data()
+
+        def preprocess_imgs(x):
+            x = (x.astype(np.float32) - 127.5) / 127.5
+
+            x = np.expand_dims(x,axis=3)
+
+            return x
+
+        def preprocess_labels(y):
+            return y.reshape(-1,1)
+
+        self.x_train = preprocess_imgs(self.x_train)
+        self.y_train = preprocess_labels(self.y_train)
+
+        self.x_test = preprocess_imgs(self.x_test)
+        self.y_test = preprocess_labels(self.y_test)
+
+    def batch_labeled(self, batch_size):
+        idx = np.random.randint(0,self.num_labeled, batch_size)
+        imgs = self.x_train[idx]
+        labels = self.y_train[idx]
+        return imgs, labels
+
+    def batch_unlabeled(self, batch_size):
+        idx = np.random.randint(self.num_labeled, self.x_train.shape[0], batch_size)
+        imgs = self.x_train[idx]
+        return imgs
+
+    def training_set(self):
+        x_train = self.x_train[range(self.num_labeled)]
+        y_train = self.y_train[range(self.num_labeled)]
+        return x_train, y_train
+
+    def test_set(self):
+        return self.x_test, self.y_test
+
+num_labeled = 100
+
+dataset = Dataset(num_labeled)
+
 
 def build_generator(z_dim): # 生成器
 
@@ -33,7 +82,7 @@ def build_generator(z_dim): # 生成器
 
     return model
 
-def build_discriminator(img_shape):
+def build_discriminator_net(img_shape):
 
     model = tf.keras.models.Sequential([
 
@@ -48,8 +97,29 @@ def build_discriminator(img_shape):
         tf.keras.layers.BatchNormalization(),
         tf.keras.layers.LeakyReLU(alpha=0.01),
 
+        tf.keras.layers.Dropout(0.5),
         tf.keras.layers.Flatten(),
-        tf.keras.layers.Dense(1,activation="sigmoid") # sigmoid関数を通して出力
+        tf.keras.layers.Dense(num_classes) # sigmoid関数を通して出力
+    ])
+
+    return model
+
+def build_discriminator_supervised(discriminator_net):
+    model = tf.keras.models.Sequential([
+        discriminator_net,
+        tf.keras.layers.Activation('softmax')
+    ])
+
+    return model
+
+def build_discriminator_unsupervised(discriminator_net):
+    def predict(x):
+        prediction = 1.0 - (1.0 / (K.sum(K.exp(x), axis=-1,keepdims=True) + 1.0))
+        return prediction
+
+    model = tf.keras.Sequential([
+        discriminator_net,
+        tf.keras.layers.Lambda(predict)
     ])
 
     return model
@@ -62,24 +132,25 @@ def build_gan(generator, discriminator):
 
     return model
 
-discriminator = build_discriminator(img_shape)
-discriminator.compile(loss="binary_crossentropy",optimizer="Adam",metrics=["accuracy"])
+discriminator_net = build_discriminator_net(img_shape)
+
+discriminator_supervised = build_discriminator_supervised(discriminator_net)
+discriminator_supervised.compile(loss="categorical_crossentropy", metrics=["accuracy"], optimizer="Adam")
+
+discriminator_unsupervised = build_discriminator_unsupervised(discriminator_net)
+discriminator_unsupervised.compile(loss="binary_crossentropy", metrics=["accuracy"], optimizer="Adam")
 
 generator = build_generator(z_dim)
 
-discriminator.trainable = False # 生成器の構築中は識別器のパラメータを固定
+discriminator_unsupervised.trainable = False # 生成器の構築中は識別器のパラメータを固定
 
-gan = build_gan(generator,discriminator) # 生成器の訓練のため、識別器は固定しGANモデルの構築とコンパイルをおこなう。
+gan = build_gan(generator,discriminator_unsupervised) # 生成器の訓練のため、識別器は固定しGANモデルの構築とコンパイルをおこなう。
 gan.compile(loss="binary_crossentropy", optimizer="Adam")
 
 log_dir = "./logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 summary_writer = tf.summary.create_file_writer(logdir=log_dir)
 
 def train(iterations,batch_size,sample_interval):
-    (X_train,_),(_,_) = tf.keras.datasets.mnist.load_data()
-
-    X_train = X_train / 127.5 - 1.0 # [0,255]の範囲の画素値を[-1,1]にスケーリング
-    X_train = np.expand_dims(X_train,axis=3)
 
     real = np.ones((batch_size,1)) # 本物の画像ラベルは1
 
@@ -88,54 +159,89 @@ def train(iterations,batch_size,sample_interval):
     for iteration in range(iterations):
         # 識別器の訓練
 
-        # 本物の画像をランダムに取り出したバッチの作成
-        idx = np.random.randint(0,X_train.shape[0],batch_size)
-        imgs = X_train[idx]
+        imgs, labels = dataset.batch_labeled(batch_size)
+
+        labels = tf.keras.utils.to_categorical(labels, num_classes=num_classes)
+
+        imgs_unlabeled = dataset.batch_unlabeled(batch_size)
 
         # 偽画像のバッチを作成
-        z = np.random.normal(0,1,(batch_size, 100))
+        z = np.random.normal(0,1,(batch_size, z_dim))
         gen_imgs = generator.predict(z)
 
-        # 識別器の訓練
-        d_loss_real = discriminator.train_on_batch(imgs, real)
-        d_loss_fake = discriminator.train_on_batch(gen_imgs, fake)
-        d_loss, accuracy = 0.5 * np.add(d_loss_real,d_loss_fake)
+        d_loss_supervised, accuracy = discriminator_supervised.train_on_batch(imgs,labels)
+
+        d_loss_real = discriminator_unsupervised.train_on_batch(imgs_unlabeled, real)
+
+        d_loss_fake = discriminator_unsupervised.train_on_batch(gen_imgs, fake)
+
+        d_loss_unsupervised = 0.5 * np.add(d_loss_real,d_loss_fake)
 
         # 生成器の訓練
-        g_loss = gan.train_on_batch(z,real)
+        z = np.random.normal(0,1,(batch_size,z_dim))
+        gen_imgs = generator.predict(z)
+        g_loss = gan.train_on_batch(z,np.ones((batch_size,1)))
 
         if (iteration + 1) % sample_interval == 0:
             # 訓練終了後に図示するために、損失と精度を保存する
             with summary_writer.as_default():
-                tf.summary.scalar("d_loss", d_loss,iteration + 1)
+                tf.summary.scalar("d_loss_supervised", d_loss_supervised,iteration + 1)
+                tf.summary.scalar("d_loss_unsupervised", d_loss_unsupervised[0],iteration + 1)
                 tf.summary.scalar("g_loss", g_loss,iteration + 1)
                 tf.summary.scalar("accuracy", 100.0 * accuracy,iteration + 1)
 
             # 訓練の進捗を出力する
-            print("%d [D loss: %f, acc.: %.2f%%] [G loss: %f]" % (iteration + 1, d_loss, 100.0 * accuracy, g_loss))
+            print("%d [D loss supervised: %f, acc.: %.2f%%] [D loss unsupervised: %f] [G loss: %f]" % (iteration + 1, d_loss_supervised, 100.0 * accuracy, d_loss_unsupervised[0], g_loss))
 
-            # サンプル画像を生成し出力
-            sample_images(generator, iteration + 1)
-
-def sample_images(generator, step, image_grid_rows=4, image_grid_columns=4):
-
-    # ランダムノイズのサンプリング
-    z = np.random.normal(0, 1, (image_grid_rows * image_grid_columns, z_dim))
-
-    # ランダムノイズを使って画像を生成
-    gen_imgs = generator.predict(z)
-
-    # 画像の画素値を[0, 1]の範囲にスケーリング
-    gen_imgs = 0.5 * gen_imgs + 0.5
-
-    # 以下matplot処理
-    for i in range(image_grid_rows * image_grid_columns):
-        name = 'img_' + str(i)
-        with summary_writer.as_default():
-            tf.summary.image(name, tf.reshape(gen_imgs[i,:,:,0], [-1,28,28,1]), step=step, max_outputs=1)
-
-iterations = 20000
-batch_size = 128
-sample_interval = 1000
+iterations = 8000
+batch_size = 32
+sample_interval = 800
 
 train(iterations, batch_size, sample_interval)
+
+x, y = dataset.training_set()
+y = tf.keras.utils.to_categorical(y, num_classes=num_classes)
+
+# Compute classification accuracy on the training set
+_, accuracy = discriminator_supervised.evaluate(x, y)
+print("Training Accuracy: %.2f%%" % (100 * accuracy))
+
+x, y = dataset.test_set()
+y = tf.keras.utils.to_categorical(y, num_classes=num_classes)
+
+_, accuracy = discriminator_supervised.evaluate(x,y)
+print("Test Accuracy: %.2f%%" % (100 * accuracy))
+
+# Fully supervised classifier with the same network architecture as the SGAN Discriminator
+mnist_classifier = build_discriminator_supervised(build_discriminator_net(img_shape))
+mnist_classifier.compile(loss='categorical_crossentropy',
+                         metrics=['accuracy'],
+                         optimizer="Adam")
+
+imgs, labels = dataset.training_set()
+# One-hot encode labels
+labels = tf.keras.utils.to_categorical(labels, num_classes=num_classes)
+
+# Train the classifier
+training = mnist_classifier.fit(x=imgs,
+                                y=labels,
+                                batch_size=32,
+                                epochs=30,
+                                verbose=1)
+losses = training.history['loss']
+accuracies = training.history['accuracy']
+
+
+x, y = dataset.training_set()
+y = tf.keras.utils.to_categorical(y, num_classes=num_classes)
+
+# Compute classification accuracy on the training set
+_, accuracy = mnist_classifier.evaluate(x, y)
+print("Training Accuracy: %.2f%%" % (100 * accuracy))
+
+x, y = dataset.test_set()
+y = tf.keras.utils.to_categorical(y, num_classes=num_classes)
+
+# Compute classification accuracy on the test set
+_, accuracy = mnist_classifier.evaluate(x, y)
+print("Test Accuracy: %.2f%%" % (100 * accuracy))
