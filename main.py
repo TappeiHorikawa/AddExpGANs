@@ -2,6 +2,12 @@ import numpy as np
 import tensorflow as tf
 import datetime
 
+physical_devices = tf.config.experimental.list_physical_devices('GPU')
+if len(physical_devices) > 0:
+    for k in range(len(physical_devices)):
+        tf.config.experimental.set_memory_growth(physical_devices[k], True)
+
+
 img_rows = 28
 img_cols = 28
 channels = 1
@@ -33,7 +39,7 @@ def build_generator(z_dim): # 生成器
 
     return model
 
-def build_discriminator(img_shape):
+def build_discriminator(img_shape): # 識別器
 
     model = tf.keras.models.Sequential([
 
@@ -54,65 +60,73 @@ def build_discriminator(img_shape):
 
     return model
 
-def build_gan(generator, discriminator):
-    model = tf.keras.Sequential([
-        generator,
-        discriminator
-    ])
-
-    return model
-
 discriminator = build_discriminator(img_shape)
-discriminator.compile(loss="binary_crossentropy",optimizer="Adam",metrics=["accuracy"])
-
 generator = build_generator(z_dim)
 
-discriminator.trainable = False # 生成器の構築中は識別器のパラメータを固定
+# This method returns a helper function to compute cross entropy loss
+cross_entropy = tf.keras.losses.BinaryCrossentropy(from_logits=True)
 
-gan = build_gan(generator,discriminator) # 生成器の訓練のため、識別器は固定しGANモデルの構築とコンパイルをおこなう。
-gan.compile(loss="binary_crossentropy", optimizer="Adam")
+def discriminator_loss(real_output, fake_output): # 識別器誤差
+    real_loss = cross_entropy(tf.ones_like(real_output), real_output)
+    fake_loss = cross_entropy(tf.zeros_like(fake_output), fake_output)
+    total_loss = real_loss + fake_loss
+    return total_loss
 
-log_dir = "./logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+def generator_loss(fake_output): # 生成器誤差
+    return cross_entropy(tf.ones_like(fake_output), fake_output)
+
+# オプティマイザはネットワークごとに必要
+generator_optimizer = tf.keras.optimizers.Adam(1e-4)
+discriminator_optimizer = tf.keras.optimizers.Adam(1e-4)
+
+log_dir = "./logs/dcgan/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 summary_writer = tf.summary.create_file_writer(logdir=log_dir)
 
-def train(iterations,batch_size,sample_interval):
+@tf.function
+def train_step(images, iteration, sample_interval):
+    noise = tf.random.normal([128, 100])
+
+    with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
+        generated_images = generator(noise, training=True)
+
+        real_output = discriminator(images, training=True)
+        fake_output = discriminator(generated_images, training=True)
+
+        gen_loss = generator_loss(fake_output)
+        disc_loss = discriminator_loss(real_output, fake_output)
+
+    gradients_of_generator = gen_tape.gradient(gen_loss, generator.trainable_variables)
+    gradients_of_discriminator = disc_tape.gradient(disc_loss, discriminator.trainable_variables)
+
+    generator_optimizer.apply_gradients(zip(gradients_of_generator, generator.trainable_variables))
+    discriminator_optimizer.apply_gradients(zip(gradients_of_discriminator, discriminator.trainable_variables))
+
+    return gen_loss, disc_loss
+
+
+
+def train(iterations, sample_interval):
     (X_train,_),(_,_) = tf.keras.datasets.mnist.load_data()
 
+    X_train = X_train.reshape(X_train.shape[0], 28, 28, 1).astype('float32')
     X_train = X_train / 127.5 - 1.0 # [0,255]の範囲の画素値を[-1,1]にスケーリング
-    X_train = np.expand_dims(X_train,axis=3)
 
-    real = np.ones((batch_size,1)) # 本物の画像ラベルは1
-
-    fake = np.zeros((batch_size,1)) # 偽物の画像ラベルは0
+    # Batch and shuffle the data
+    train_dataset = tf.data.Dataset.from_tensor_slices(X_train).shuffle(60000).batch(128, drop_remainder=True)
 
     for iteration in range(iterations):
-        # 識別器の訓練
 
-        # 本物の画像をランダムに取り出したバッチの作成
-        idx = np.random.randint(0,X_train.shape[0],batch_size)
-        imgs = X_train[idx]
-
-        # 偽画像のバッチを作成
-        z = np.random.normal(0,1,(batch_size, 100))
-        gen_imgs = generator.predict(z)
-
-        # 識別器の訓練
-        d_loss_real = discriminator.train_on_batch(imgs, real)
-        d_loss_fake = discriminator.train_on_batch(gen_imgs, fake)
-        d_loss, accuracy = 0.5 * np.add(d_loss_real,d_loss_fake)
-
-        # 生成器の訓練
-        g_loss = gan.train_on_batch(z,real)
-
+        for image_batch in train_dataset:
+            disc_loss, gen_loss = train_step(image_batch, tf.constant(iteration, dtype=tf.int64), tf.constant(sample_interval, dtype=tf.int64))
         if (iteration + 1) % sample_interval == 0:
-            # 訓練終了後に図示するために、損失と精度を保存する
+        # 訓練終了後に図示するために、損失と精度を保存する
             with summary_writer.as_default():
-                tf.summary.scalar("d_loss", d_loss,iteration + 1)
-                tf.summary.scalar("g_loss", g_loss,iteration + 1)
-                tf.summary.scalar("accuracy", 100.0 * accuracy,iteration + 1)
+                tf.summary.scalar("d_loss", disc_loss,iteration + 1)
+                tf.summary.scalar("g_loss", gen_loss,iteration + 1)
+
 
             # 訓練の進捗を出力する
-            print("%d [D loss: %f, acc.: %.2f%%] [G loss: %f]" % (iteration + 1, d_loss, 100.0 * accuracy, g_loss))
+            tf.print(iteration + 1, " [D loss: ", disc_loss, "%] [G loss: ", gen_loss, "]", sep='')
 
             # サンプル画像を生成し出力
             sample_images(generator, iteration + 1)
@@ -120,10 +134,10 @@ def train(iterations,batch_size,sample_interval):
 def sample_images(generator, step, image_grid_rows=4, image_grid_columns=4):
 
     # ランダムノイズのサンプリング
-    z = np.random.normal(0, 1, (image_grid_rows * image_grid_columns, z_dim))
+    z = tf.random.normal([16, 100])
 
     # ランダムノイズを使って画像を生成
-    gen_imgs = generator.predict(z)
+    gen_imgs = generator(z)
 
     # 画像の画素値を[0, 1]の範囲にスケーリング
     gen_imgs = 0.5 * gen_imgs + 0.5
@@ -134,8 +148,8 @@ def sample_images(generator, step, image_grid_rows=4, image_grid_columns=4):
         with summary_writer.as_default():
             tf.summary.image(name, tf.reshape(gen_imgs[i,:,:,0], [-1,28,28,1]), step=step, max_outputs=1)
 
-iterations = 20000
+iterations = 100
 batch_size = 128
-sample_interval = 1000
+sample_interval = 5
 
-train(iterations, batch_size, sample_interval)
+train(iterations,sample_interval)
