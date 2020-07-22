@@ -251,57 +251,57 @@ class SGAN():
             with self.summary_writer.as_default():
                 tf.summary.image(name, tf.reshape(gen_imgs[i,:,:,0], [-1,28,28,1]), step=step, max_outputs=1)
 
+if __name__ == "__main__":
+    iterations = 4000
+    batch_size = 256
+    sample_interval = 800
 
-iterations = 4000
-batch_size = 256
-sample_interval = 800
+    sgan = SGAN()
+    sgan.train(iterations, batch_size, sample_interval)
 
-sgan = SGAN()
-sgan.train(iterations, batch_size, sample_interval)
+    x, y = sgan.dataset.training_set()
+    y = tf.keras.utils.to_categorical(y, num_classes=sgan.num_classes)
 
-x, y = sgan.dataset.training_set()
-y = tf.keras.utils.to_categorical(y, num_classes=sgan.num_classes)
+    # Compute classification accuracy on the training set
+    _, accuracy = sgan.discriminator_supervised.evaluate(x, y)
+    print("Training Accuracy: %.2f%%" % (100 * accuracy))
 
-# Compute classification accuracy on the training set
-_, accuracy = sgan.discriminator_supervised.evaluate(x, y)
-print("Training Accuracy: %.2f%%" % (100 * accuracy))
+    x, y = sgan.dataset.test_set()
+    y = tf.keras.utils.to_categorical(y, num_classes=sgan.num_classes)
 
-x, y = sgan.dataset.test_set()
-y = tf.keras.utils.to_categorical(y, num_classes=sgan.num_classes)
+    _, accuracy = sgan.discriminator_supervised.evaluate(x,y)
+    print("Test Accuracy: %.2f%%" % (100 * accuracy))
 
-_, accuracy = sgan.discriminator_supervised.evaluate(x,y)
-print("Test Accuracy: %.2f%%" % (100 * accuracy))
+    # Fully supervised classifier with the same network architecture as the SGAN Discriminator
+    mnist_classifier = sgan.build_discriminator_supervised(sgan.build_discriminator_net(sgan.img_shape))
+    mnist_classifier.compile(loss='categorical_crossentropy',
+                             metrics=['accuracy'],
+                             optimizer="Adam")
 
-# Fully supervised classifier with the same network architecture as the SGAN Discriminator
-mnist_classifier = sgan.build_discriminator_supervised(sgan.build_discriminator_net(sgan.img_shape))
-mnist_classifier.compile(loss='categorical_crossentropy',
-                         metrics=['accuracy'],
-                         optimizer="Adam")
+    imgs, labels = sgan.dataset.training_set()
+    # One-hot encode labels
+    labels = tf.keras.utils.to_categorical(labels, num_classes=sgan.num_classes)
 
-imgs, labels = sgan.dataset.training_set()
-# One-hot encode labels
-labels = tf.keras.utils.to_categorical(labels, num_classes=sgan.num_classes)
-
-# Train the classifier
-training = mnist_classifier.fit(x=imgs,
-                                y=labels,
-                                batch_size=32,
-                                epochs=30,
-                                verbose=1)
-losses = training.history['loss']
-accuracies = training.history['accuracy']
+    # Train the classifier
+    training = mnist_classifier.fit(x=imgs,
+                                    y=labels,
+                                    batch_size=32,
+                                    epochs=30,
+                                    verbose=1)
+    losses = training.history['loss']
+    accuracies = training.history['accuracy']
 
 
-x, y = sgan.dataset.training_set()
-y = tf.keras.utils.to_categorical(y, num_classes=sgan.num_classes)
+    x, y = sgan.dataset.training_set()
+    y = tf.keras.utils.to_categorical(y, num_classes=sgan.num_classes)
 
-# Compute classification accuracy on the training set
-_, accuracy = mnist_classifier.evaluate(x, y)
-print("Training Accuracy: %.2f%%" % (100 * accuracy))
+    # Compute classification accuracy on the training set
+    _, accuracy = mnist_classifier.evaluate(x, y)
+    print("Training Accuracy: %.2f%%" % (100 * accuracy))
 
-x, y = sgan.dataset.test_set()
-y = tf.keras.utils.to_categorical(y, num_classes=sgan.num_classes)
+    x, y = sgan.dataset.test_set()
+    y = tf.keras.utils.to_categorical(y, num_classes=sgan.num_classes)
 
-# Compute classification accuracy on the test set
-_, accuracy = mnist_classifier.evaluate(x, y)
-print("Test Accuracy: %.2f%%" % (100 * accuracy))
+    # Compute classification accuracy on the test set
+    _, accuracy = mnist_classifier.evaluate(x, y)
+    print("Test Accuracy: %.2f%%" % (100 * accuracy))
