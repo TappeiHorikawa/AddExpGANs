@@ -3,6 +3,11 @@ import tensorflow as tf
 import datetime
 from keras import backend as K
 
+tf.random.set_seed(1234)
+np.random.seed(1234)
+#physical_devices = tf.config.list_physical_devices('GPU')
+#tf.config.set_visible_devices(physical_devices[1:], 'GPU')
+
 class Dataset:
     def __init__(self, num_labeled):
         self.num_labeled = num_labeled
@@ -63,20 +68,22 @@ class SGAN():
         self.discriminator_net = self.build_discriminator_net(self.img_shape)
 
         self.discriminator_supervised = self.build_discriminator_supervised(self.discriminator_net)
-        self.discriminator_supervised.compile(loss="categorical_crossentropy", metrics=["accuracy"], optimizer="Adam")
 
         self.discriminator_unsupervised = self.build_discriminator_unsupervised(self.discriminator_net)
-        self.discriminator_unsupervised.compile(loss="binary_crossentropy", metrics=["accuracy"], optimizer="Adam")
+
+        self.acc = tf.metrics.CategoricalAccuracy()
 
         self.generator = self.build_generator(self.z_dim)
 
-        self.discriminator_unsupervised.trainable = False # 生成器の構築中は識別器のパラメータを固定
+        self.bc = tf.losses.BinaryCrossentropy()
+        self.cc = tf.losses.CategoricalCrossentropy()
+        self.generator_optimizer = tf.keras.optimizers.Adam()
+        self.discriminator_optimizer = tf.keras.optimizers.Adam()
+        self.discriminator_un_r_optimizer = tf.keras.optimizers.Adam()
+        self.discriminator_un_f_optimizer = tf.keras.optimizers.Adam()
 
-        self.gan = self.build_gan(self.generator,self.discriminator_unsupervised) # 生成器の訓練のため、識別器は固定しGANモデルの構築とコンパイルをおこなう。
-        self.gan.compile(loss="binary_crossentropy", optimizer="Adam")
-
-        log_dir = "./logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        self.summary_writer = tf.summary.create_file_writer(logdir=log_dir)
+        self.log_dir = "./logs/SGAN/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        self.summary_writer = tf.summary.create_file_writer(logdir=self.log_dir)
 
 
 
@@ -145,21 +152,61 @@ class SGAN():
 
         return model
 
-    def build_gan(self, generator, discriminator):
-        model = tf.keras.Sequential([
-            generator,
-            discriminator
-        ])
 
-        return model
+    def discriminator_supervised_loss(self, y_true, y_pred):
+        return self.cc(y_true, y_pred)+ 1e-12
 
+    def d_unsupervised_loss_real(self, real_output):
+        real_loss = self.bc(tf.ones_like(real_output), real_output)
+        return real_loss+ 1e-12
+
+    def d_unsupervised_loss_fake(self, fake_output):
+        fake_loss = self.bc(tf.zeros_like(fake_output), fake_output)
+        return fake_loss+ 1e-12
+
+    def discriminator_unsupervised_loss(self, real_loss, fake_loss):
+        total_loss = (real_loss + fake_loss)
+        return total_loss+ 1e-12
+
+    def generator_loss(self, fake_output):
+        return self.bc(tf.ones_like(fake_output), fake_output)+ 1e-12
+
+    @tf.function
+    def train_step(self, imgs, labels, imgs_unlabeled):
+        z = tf.random.normal([batch_size, self.z_dim])
+
+        with tf.GradientTape() as disc_tape, tf.GradientTape() as gen_tape, tf.GradientTape() as disc_un_r_tape, tf.GradientTape() as disc_un_f_tape:
+            labels_pred = self.discriminator_supervised(imgs,training=True)
+            d_loss_supervised = self.discriminator_supervised_loss(labels, labels_pred)
+
+            gen_imgs = self.generator(z,training=True)
+
+            real_output = self.discriminator_unsupervised(imgs_unlabeled,training=True)
+            fake_output = self.discriminator_unsupervised(gen_imgs,training=True)
+            d_loss_real = self.d_unsupervised_loss_real(real_output)
+            d_loss_fake = self.d_unsupervised_loss_fake(fake_output)
+            d_loss_unsupervised = self.discriminator_unsupervised_loss(d_loss_real, d_loss_fake)
+
+            g_loss = self.generator_loss(fake_output)
+
+        self.acc.update_state(labels, labels_pred)
+
+        gradients_of_discriminator = disc_tape.gradient(d_loss_supervised, self.discriminator_supervised.trainable_variables)
+        gradients_of_generator = gen_tape.gradient(g_loss, self.generator.trainable_variables)
+        gradients_of_discriminator_un_r = disc_un_r_tape.gradient(d_loss_real, self.discriminator_unsupervised.trainable_variables)
+        gradients_of_discriminator_un_f = disc_un_f_tape.gradient(d_loss_fake, self.discriminator_unsupervised.trainable_variables)
+
+        self.generator_optimizer.apply_gradients(zip(gradients_of_generator, self.generator.trainable_variables))
+        self.discriminator_optimizer.apply_gradients(zip(gradients_of_discriminator, self.discriminator_supervised.trainable_variables))
+        self.discriminator_un_r_optimizer.apply_gradients(zip(gradients_of_discriminator_un_r, self.discriminator_unsupervised.trainable_variables))
+        self.discriminator_un_f_optimizer.apply_gradients(zip(gradients_of_discriminator_un_f, self.discriminator_unsupervised.trainable_variables))
+
+        return g_loss, d_loss_supervised, d_loss_unsupervised
 
     def train(self, iterations,batch_size,sample_interval):
+        tf.random.set_seed(1234)
 
-        real = np.ones((batch_size,1)) # 本物の画像ラベルは1
-
-        fake = np.zeros((batch_size,1)) # 偽物の画像ラベルは0
-
+        tf.summary.trace_on(graph=True, profiler=True)
         for iteration in range(iterations):
             # 識別器の訓練
 
@@ -169,36 +216,44 @@ class SGAN():
 
             imgs_unlabeled = self.dataset.batch_unlabeled(batch_size)
 
-            # 偽画像のバッチを作成
-            z = np.random.normal(0,1,(batch_size, self.z_dim))
-            gen_imgs = self.generator.predict(z)
-
-            d_loss_supervised, accuracy = self.discriminator_supervised.train_on_batch(imgs,labels)
-
-            d_loss_real = self.discriminator_unsupervised.train_on_batch(imgs_unlabeled, real)
-
-            d_loss_fake = self.discriminator_unsupervised.train_on_batch(gen_imgs, fake)
-
-            d_loss_unsupervised = 0.5 * np.add(d_loss_real,d_loss_fake)
-
-            # 生成器の訓練
-            z = np.random.normal(0,1,(batch_size,self.z_dim))
-            gen_imgs = self.generator.predict(z)
-            g_loss = self.gan.train_on_batch(z,np.ones((batch_size,1)))
+            g_loss, d_loss_supervised, d_loss_unsupervised = self.train_step(tf.constant(imgs), tf.constant(labels), tf.constant(imgs_unlabeled))
+            accuracy = self.acc.result()
 
             if (iteration + 1) % sample_interval == 0:
-                # 訓練終了後に図示するために、損失と精度を保存する
-                with self.summary_writer.as_default():
-                    tf.summary.scalar("d_loss_supervised", d_loss_supervised,iteration + 1)
-                    tf.summary.scalar("d_loss_unsupervised", d_loss_unsupervised[0],iteration + 1)
-                    tf.summary.scalar("g_loss", g_loss,iteration + 1)
-                    tf.summary.scalar("accuracy", 100.0 * accuracy,iteration + 1)
-
                 # 訓練の進捗を出力する
-                print("%d [D loss supervised: %f, acc.: %.2f%%] [D loss unsupervised: %f] [G loss: %f]" % (iteration + 1, d_loss_supervised, 100.0 * accuracy, d_loss_unsupervised[0], g_loss))
+                print("%d [D loss supervised: %f, acc.: %.2f%%] [D loss unsupervised: %f] [G loss: %f]" % (iteration + 1, d_loss_supervised, 100.0 * accuracy, d_loss_unsupervised, g_loss))
 
-iterations = 8000
-batch_size = 32
+            # 訓練終了後に図示するために、損失と精度を保存する
+            with self.summary_writer.as_default():
+                tf.summary.scalar("d_loss_supervised", d_loss_supervised,iteration + 1)
+                tf.summary.scalar("d_loss_unsupervised", d_loss_unsupervised,iteration + 1)
+                tf.summary.scalar("g_loss", g_loss,iteration + 1)
+                tf.summary.scalar("accuracy", 100.0 * accuracy,iteration + 1)
+            self.sample_images(iteration + 1)
+
+        with self.summary_writer.as_default():
+            tf.summary.trace_export(name="SGAN",step=0,profiler_outdir=self.log_dir)
+
+    def sample_images(self, step, image_grid_rows=4, image_grid_columns=4):
+
+        # ランダムノイズのサンプリング
+        z = tf.random.normal([16, 100])
+
+        # ランダムノイズを使って画像を生成
+        gen_imgs = self.generator.predict(z)
+
+        # 画像の画素値を[0, 1]の範囲にスケーリング
+        gen_imgs = 0.5 * gen_imgs + 0.5
+
+        # 以下matplot処理
+        for i in range(image_grid_rows * image_grid_columns):
+            name = 'img_' + str(i)
+            with self.summary_writer.as_default():
+                tf.summary.image(name, tf.reshape(gen_imgs[i,:,:,0], [-1,28,28,1]), step=step, max_outputs=1)
+
+
+iterations = 4000
+batch_size = 256
 sample_interval = 800
 
 sgan = SGAN()
