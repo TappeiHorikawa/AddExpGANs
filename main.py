@@ -1,12 +1,6 @@
 import numpy as np
 import tensorflow as tf
 import datetime
-from keras import backend as K
-
-tf.random.set_seed(1234)
-np.random.seed(1234)
-#physical_devices = tf.config.list_physical_devices('GPU')
-#tf.config.set_visible_devices(physical_devices[1:], 'GPU')
 
 class Dataset:
     def __init__(self, num_labeled):
@@ -61,7 +55,7 @@ class SGAN():
         self.z_dim = 100
         self.num_classes = 10
 
-        self.num_labeled = 100
+        self.num_labeled = 1000
 
         self.dataset = Dataset(self.num_labeled)
 
@@ -81,10 +75,6 @@ class SGAN():
         self.discriminator_optimizer = tf.keras.optimizers.Adam()
         self.discriminator_un_r_optimizer = tf.keras.optimizers.Adam()
         self.discriminator_un_f_optimizer = tf.keras.optimizers.Adam()
-
-        self.log_dir = "./logs/SGAN/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        self.summary_writer = tf.summary.create_file_writer(logdir=self.log_dir)
-
 
 
     def build_generator(self, z_dim): # 生成器
@@ -142,7 +132,7 @@ class SGAN():
 
     def build_discriminator_unsupervised(self, discriminator_net):
         def predict(x):
-            prediction = 1.0 - (1.0 / (K.sum(K.exp(x), axis=-1,keepdims=True) + 1.0))
+            prediction = 1.0 - (1.0 / (tf.keras.backend.sum(tf.keras.backend.exp(x), axis=-1,keepdims=True) + 1.0))
             return prediction
 
         model = tf.keras.Sequential([
@@ -204,9 +194,13 @@ class SGAN():
         return g_loss, d_loss_supervised, d_loss_unsupervised
 
     def train(self, iterations,batch_size,sample_interval):
-        tf.random.set_seed(1234)
+        now = datetime.datetime.now() + datetime.timedelta(hours=9)
+        log_dir = "./logs/SGAN_Satistics/" + now.strftime("%Y%m%d-%H%M%S")
+        self.summary_writer = tf.summary.create_file_writer(logdir=log_dir)
 
-        tf.summary.trace_on(graph=True, profiler=True)
+
+
+        #tf.summary.trace_on(graph=True, profiler=True)
         for iteration in range(iterations):
             # 識別器の訓練
 
@@ -231,8 +225,8 @@ class SGAN():
                 tf.summary.scalar("accuracy", 100.0 * accuracy,iteration + 1)
             self.sample_images(iteration + 1)
 
-        with self.summary_writer.as_default():
-            tf.summary.trace_export(name="SGAN",step=0,profiler_outdir=self.log_dir)
+        #with self.summary_writer.as_default():
+        #    tf.summary.trace_export(name="SGAN",step=0,profiler_outdir=log_dir)
 
     def sample_images(self, step, image_grid_rows=4, image_grid_columns=4):
 
@@ -251,57 +245,57 @@ class SGAN():
             with self.summary_writer.as_default():
                 tf.summary.image(name, tf.reshape(gen_imgs[i,:,:,0], [-1,28,28,1]), step=step, max_outputs=1)
 
+
 if __name__ == "__main__":
     iterations = 4000
     batch_size = 256
     sample_interval = 800
+    accur = tf.metrics.CategoricalAccuracy()
 
-    sgan = SGAN()
-    sgan.train(iterations, batch_size, sample_interval)
-
-    x, y = sgan.dataset.training_set()
-    y = tf.keras.utils.to_categorical(y, num_classes=sgan.num_classes)
-
-    # Compute classification accuracy on the training set
-    _, accuracy = sgan.discriminator_supervised.evaluate(x, y)
-    print("Training Accuracy: %.2f%%" % (100 * accuracy))
-
-    x, y = sgan.dataset.test_set()
-    y = tf.keras.utils.to_categorical(y, num_classes=sgan.num_classes)
-
-    _, accuracy = sgan.discriminator_supervised.evaluate(x,y)
-    print("Test Accuracy: %.2f%%" % (100 * accuracy))
-
-    # Fully supervised classifier with the same network architecture as the SGAN Discriminator
-    mnist_classifier = sgan.build_discriminator_supervised(sgan.build_discriminator_net(sgan.img_shape))
-    mnist_classifier.compile(loss='categorical_crossentropy',
-                             metrics=['accuracy'],
-                             optimizer="Adam")
-
-    imgs, labels = sgan.dataset.training_set()
-    # One-hot encode labels
-    labels = tf.keras.utils.to_categorical(labels, num_classes=sgan.num_classes)
-
-    # Train the classifier
-    training = mnist_classifier.fit(x=imgs,
-                                    y=labels,
-                                    batch_size=32,
-                                    epochs=30,
-                                    verbose=1)
-    losses = training.history['loss']
-    accuracies = training.history['accuracy']
+    """
+    for i in range(10):
+        sgan = SGAN()
+        sgan.train(iterations, batch_size, sample_interval)
 
 
-    x, y = sgan.dataset.training_set()
-    y = tf.keras.utils.to_categorical(y, num_classes=sgan.num_classes)
+        x_train, y_train = sgan.dataset.training_set()
+        y_train = tf.keras.utils.to_categorical(y_train, num_classes=sgan.num_classes)
+        x_test, y_test = sgan.dataset.test_set()
+        y_test = tf.keras.utils.to_categorical(y_test, num_classes=sgan.num_classes)
 
-    # Compute classification accuracy on the training set
-    _, accuracy = mnist_classifier.evaluate(x, y)
-    print("Training Accuracy: %.2f%%" % (100 * accuracy))
+        # トレーニングデータの分類精度を計算する
+        y_out = sgan.discriminator_supervised(x_train)
+        accur.update_state(y_train,y_out)
+        print("Training Accuracy: %.2f%%" % (100 * accur.result()))
+        accur.reset_states()
 
-    x, y = sgan.dataset.test_set()
-    y = tf.keras.utils.to_categorical(y, num_classes=sgan.num_classes)
+        y_out = sgan.discriminator_supervised(x_test)
+        accur.update_state(y_test,y_out)
+        print("Test Accuracy: %.2f%%" % (100 * accur.result()))
+        accur.reset_states()
+    Tr_acc = []
+    Ts_acc = []
+    for i in range(10):
+        sgan = SGAN()
+        x_train, y_train = sgan.dataset.training_set()
+        y_train = tf.keras.utils.to_categorical(y_train, num_classes=sgan.num_classes)
+        x_test, y_test = sgan.dataset.test_set()
+        y_test = tf.keras.utils.to_categorical(y_test, num_classes=sgan.num_classes)
+        # SGAN 識別器と同じ構造のネットワークで新たに別のモデルを作成し分類する
+        mnist_classifier = sgan.build_discriminator_supervised(sgan.build_discriminator_net(sgan.img_shape))
+        mnist_classifier.compile(loss='categorical_crossentropy',metrics=['accuracy'],optimizer="Adam")
+        _ = mnist_classifier.fit(x=x_train,y=y_train,batch_size=batch_size,epochs=iterations // 4,verbose=1) # 分類器訓練
 
-    # Compute classification accuracy on the test set
-    _, accuracy = mnist_classifier.evaluate(x, y)
-    print("Test Accuracy: %.2f%%" % (100 * accuracy))
+        # トレーニングデータの分類精度を計算する
+        _, accuracy = mnist_classifier.evaluate(x_train, y_train)
+        print("Training Accuracy: %.2f%%" % (100 * accuracy))
+        Tr_acc.append(accuracy)
+
+        # テストデータの分類精度を計算する
+        _, accuracy = mnist_classifier.evaluate(x_test, y_test)
+        print("Test Accuracy: %.2f%%" % (100 * accuracy))
+        Ts_acc.append(accuracy)
+
+    print(Tr_acc)
+    print(Ts_acc)
+    """

@@ -1,68 +1,70 @@
+800 [D loss supervised: 0.019541, acc.: 98.14%] [D loss unsupervised: 0.565803] [G loss: 2.801234]
+1600 [D loss supervised: 0.005613, acc.: 98.95%] [D loss unsupervised: 2.156639] [G loss: 1.292770]
+2400 [D loss supervised: 0.001445, acc.: 99.26%] [D loss unsupervised: 2.151335] [G loss: 1.415298]
+3200 [D loss supervised: 0.001394, acc.: 99.42%] [D loss unsupervised: 1.818071] [G loss: 1.832208]
+4000 [D loss supervised: 0.001204, acc.: 99.52%] [D loss unsupervised: 2.212695] [G loss: 1.701840]
 Training Accuracy: 100.00%
-Test Accuracy: 93.72%
-313/313 [==============================] - 10s 32ms/step - loss: 2.3052 - accuracy: 0.1044
-Fit Before Test Accuracy: 10.44%
-Epoch 1/30
-4/4 [==============================] - 0s 70ms/step - loss: 2.6156 - accuracy: 0.2200
-Epoch 2/30
-4/4 [==============================] - 0s 19ms/step - loss: 1.0979 - accuracy: 0.6100
-Epoch 3/30
-4/4 [==============================] - 0s 20ms/step - loss: 0.5860 - accuracy: 0.8100
-Epoch 4/30
-4/4 [==============================] - 0s 42ms/step - loss: 0.3088 - accuracy: 0.9400
-Epoch 5/30
-4/4 [==============================] - 0s 10ms/step - loss: 0.3239 - accuracy: 0.9300
-Epoch 6/30
-4/4 [==============================] - 0s 11ms/step - loss: 0.1792 - accuracy: 0.9800
-Epoch 7/30
-4/4 [==============================] - 0s 12ms/step - loss: 0.1221 - accuracy: 0.9800
-Epoch 8/30
-4/4 [==============================] - 0s 34ms/step - loss: 0.1015 - accuracy: 1.0000
-Epoch 9/30
-4/4 [==============================] - 0s 11ms/step - loss: 0.0881 - accuracy: 1.0000
-Epoch 10/30
-4/4 [==============================] - 0s 35ms/step - loss: 0.0547 - accuracy: 1.0000
-Epoch 11/30
-4/4 [==============================] - 0s 41ms/step - loss: 0.0530 - accuracy: 0.9800
-Epoch 12/30
-4/4 [==============================] - 0s 11ms/step - loss: 0.0447 - accuracy: 0.9900
-Epoch 13/30
-4/4 [==============================] - 0s 33ms/step - loss: 0.0238 - accuracy: 1.0000
-Epoch 14/30
-4/4 [==============================] - 0s 17ms/step - loss: 0.0468 - accuracy: 0.9900
-Epoch 15/30
-4/4 [==============================] - 0s 11ms/step - loss: 0.0271 - accuracy: 1.0000
-Epoch 16/30
-4/4 [==============================] - 0s 12ms/step - loss: 0.0251 - accuracy: 1.0000
-Epoch 17/30
-4/4 [==============================] - 0s 10ms/step - loss: 0.0352 - accuracy: 0.9900
-Epoch 18/30
-4/4 [==============================] - 0s 10ms/step - loss: 0.0254 - accuracy: 1.0000
-Epoch 19/30
-4/4 [==============================] - 0s 31ms/step - loss: 0.0211 - accuracy: 1.0000
-Epoch 20/30
-4/4 [==============================] - 0s 30ms/step - loss: 0.0112 - accuracy: 1.0000
-Epoch 21/30
-4/4 [==============================] - 0s 40ms/step - loss: 0.0098 - accuracy: 1.0000
-Epoch 22/30
-4/4 [==============================] - 0s 46ms/step - loss: 0.0105 - accuracy: 1.0000
-Epoch 23/30
-4/4 [==============================] - 0s 10ms/step - loss: 0.0103 - accuracy: 1.0000
-Epoch 24/30
-4/4 [==============================] - 0s 14ms/step - loss: 0.0138 - accuracy: 1.0000
-Epoch 25/30
-4/4 [==============================] - 0s 15ms/step - loss: 0.0074 - accuracy: 1.0000
-Epoch 26/30
-4/4 [==============================] - 0s 13ms/step - loss: 0.0063 - accuracy: 1.0000
-Epoch 27/30
-4/4 [==============================] - 0s 33ms/step - loss: 0.0039 - accuracy: 1.0000
-Epoch 28/30
-4/4 [==============================] - 0s 35ms/step - loss: 0.0047 - accuracy: 1.0000
-Epoch 29/30
-4/4 [==============================] - 0s 55ms/step - loss: 0.0047 - accuracy: 1.0000
-Epoch 30/30
-4/4 [==============================] - 0s 30ms/step - loss: 0.0091 - accuracy: 1.0000
-4/4 [==============================] - 0s 7ms/step - loss: 1.6623 - accuracy: 0.9300
-Training Accuracy: 93.00%
-313/313 [==============================] - 10s 32ms/step - loss: 1.9768 - accuracy: 0.5253
-Test Accuracy: 52.53%
+Test Accuracy: 96.22%
+800 [D loss supervised: 0.005041, acc.: 97.96%] [D loss unsupervised: 1.072791] [G loss: 1.924002]
+1600 [D loss supervised: 0.005773, acc.: 98.87%] [D loss unsupervised: 2.146335] [G loss: 1.131477]
+2400 [D loss supervised: 0.002912, acc.: 99.21%] [D loss unsupervised: 2.399895] [G loss: 0.968892]
+3200 [D loss supervised: 0.003717, acc.: 99.39%] [D loss unsupervised: 2.175997] [G loss: 1.066418]
+4000 [D loss supervised: 0.000868, acc.: 99.50%] [D loss unsupervised: 2.383107] [G loss: 1.077582]
+Training Accuracy: 100.00%
+Test Accuracy: 96.91%
+800 [D loss supervised: 0.012330, acc.: 98.12%] [D loss unsupervised: 2.573755] [G loss: 0.795529]
+1600 [D loss supervised: 0.003148, acc.: 98.94%] [D loss unsupervised: 1.827526] [G loss: 1.372782]
+2400 [D loss supervised: 0.001051, acc.: 99.24%] [D loss unsupervised: 1.629159] [G loss: 1.326425]
+3200 [D loss supervised: 0.005195, acc.: 99.41%] [D loss unsupervised: 2.931937] [G loss: 0.856612]
+4000 [D loss supervised: 0.010026, acc.: 99.51%] [D loss unsupervised: 1.950391] [G loss: 1.545011]
+Training Accuracy: 100.00%
+Test Accuracy: 96.58%
+800 [D loss supervised: 0.018309, acc.: 98.09%] [D loss unsupervised: 1.156167] [G loss: 1.938390]
+1600 [D loss supervised: 0.004811, acc.: 98.92%] [D loss unsupervised: 2.013329] [G loss: 1.250592]
+2400 [D loss supervised: 0.001423, acc.: 99.23%] [D loss unsupervised: 2.267288] [G loss: 1.317426]
+3200 [D loss supervised: 0.002173, acc.: 99.40%] [D loss unsupervised: 2.314378] [G loss: 1.408404]
+4000 [D loss supervised: 0.000390, acc.: 99.51%] [D loss unsupervised: 2.913004] [G loss: 1.014903]
+Training Accuracy: 100.00%
+Test Accuracy: 96.15%
+800 [D loss supervised: 0.025263, acc.: 98.07%] [D loss unsupervised: 0.811840] [G loss: 2.493650]
+1600 [D loss supervised: 0.014561, acc.: 98.92%] [D loss unsupervised: 1.981205] [G loss: 1.340667]
+2400 [D loss supervised: 0.010738, acc.: 99.23%] [D loss unsupervised: 2.542835] [G loss: 0.997139]
+3200 [D loss supervised: 0.002426, acc.: 99.40%] [D loss unsupervised: 2.138061] [G loss: 1.139155]
+4000 [D loss supervised: 0.003589, acc.: 99.51%] [D loss unsupervised: 1.738053] [G loss: 1.538947]
+Training Accuracy: 100.00%
+Test Accuracy: 97.09%
+800 [D loss supervised: 0.007244, acc.: 97.80%] [D loss unsupervised: 0.917555] [G loss: 1.973924]
+1600 [D loss supervised: 0.016009, acc.: 98.73%] [D loss unsupervised: 3.163444] [G loss: 0.844597]
+2400 [D loss supervised: 0.011713, acc.: 99.10%] [D loss unsupervised: 3.065739] [G loss: 0.757348]
+3200 [D loss supervised: 0.004047, acc.: 99.29%] [D loss unsupervised: 1.852617] [G loss: 1.668996]
+4000 [D loss supervised: 0.001349, acc.: 99.42%] [D loss unsupervised: 2.488197] [G loss: 1.293474]
+Training Accuracy: 100.00%
+Test Accuracy: 96.64%
+800 [D loss supervised: 0.024039, acc.: 97.96%] [D loss unsupervised: 0.856590] [G loss: 2.555778]
+1600 [D loss supervised: 0.004413, acc.: 98.82%] [D loss unsupervised: 1.730209] [G loss: 1.902601]
+2400 [D loss supervised: 0.001160, acc.: 99.17%] [D loss unsupervised: 2.672493] [G loss: 1.157641]
+3200 [D loss supervised: 0.003172, acc.: 99.35%] [D loss unsupervised: 2.028172] [G loss: 1.670904]
+4000 [D loss supervised: 0.000519, acc.: 99.47%] [D loss unsupervised: 1.044304] [G loss: 2.878812]
+Training Accuracy: 100.00%
+Test Accuracy: 96.72%
+800 [D loss supervised: 0.005400, acc.: 98.06%] [D loss unsupervised: 0.967692] [G loss: 2.558872]
+1600 [D loss supervised: 0.002577, acc.: 98.90%] [D loss unsupervised: 1.526071] [G loss: 1.776146]
+2400 [D loss supervised: 0.003784, acc.: 99.21%] [D loss unsupervised: 1.965351] [G loss: 1.594430]
+3200 [D loss supervised: 0.001174, acc.: 99.39%] [D loss unsupervised: 2.252958] [G loss: 1.112785]
+4000 [D loss supervised: 0.001381, acc.: 99.50%] [D loss unsupervised: 2.396530] [G loss: 1.037474]
+Training Accuracy: 100.00%
+Test Accuracy: 96.86%
+800 [D loss supervised: 0.024009, acc.: 97.98%] [D loss unsupervised: 2.172781] [G loss: 0.810539]
+1600 [D loss supervised: 0.008781, acc.: 98.86%] [D loss unsupervised: 1.617787] [G loss: 1.265602]
+2400 [D loss supervised: 0.001547, acc.: 99.20%] [D loss unsupervised: 1.499523] [G loss: 1.646345]
+3200 [D loss supervised: 0.001496, acc.: 99.38%] [D loss unsupervised: 2.050641] [G loss: 0.872288]
+4000 [D loss supervised: 0.001632, acc.: 99.49%] [D loss unsupervised: 5.151722] [G loss: 0.302719]
+Training Accuracy: 100.00%
+Test Accuracy: 96.49%
+800 [D loss supervised: 0.013342, acc.: 98.00%] [D loss unsupervised: 1.840739] [G loss: 1.133930]
+1600 [D loss supervised: 0.003855, acc.: 98.86%] [D loss unsupervised: 2.715102] [G loss: 0.926358]
+2400 [D loss supervised: 0.004867, acc.: 99.20%] [D loss unsupervised: 2.200499] [G loss: 1.085086]
+3200 [D loss supervised: 0.009842, acc.: 99.38%] [D loss unsupervised: 2.302414] [G loss: 1.019212]
+4000 [D loss supervised: 0.004029, acc.: 99.48%] [D loss unsupervised: 2.083566] [G loss: 1.020533]
+Training Accuracy: 100.00%
+Test Accuracy: 96.76%
