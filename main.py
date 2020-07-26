@@ -1,17 +1,6 @@
 import numpy as np
 import tensorflow as tf
 import datetime
-from keras import backend as K
-
-img_rows = 28
-img_cols = 28
-channels = 1
-
-img_shape = (img_rows, img_cols, channels)
-
-z_dim = 100
-num_classes = 10
-
 
 class Dataset:
     def __init__(self, num_labeled):
@@ -54,194 +43,241 @@ class Dataset:
     def test_set(self):
         return self.x_test, self.y_test
 
-num_labeled = 100
 
-dataset = Dataset(num_labeled)
+class SGAN():
+    def __init__(self):
+        self.img_rows = 28
+        self.img_cols = 28
+        self.channels = 1
+
+        self.img_shape = (self.img_rows, self.img_cols, self.channels)
+
+        self.z_dim = 100
+        self.num_classes = 10
+
+        self.num_labeled = 100
+
+        self.dataset = Dataset(self.num_labeled)
+
+        self.discriminator_net = self.build_discriminator_net(self.img_shape)
+
+        self.discriminator_supervised = self.build_discriminator_supervised(self.discriminator_net)
+
+        self.discriminator_unsupervised = self.build_discriminator_unsupervised(self.discriminator_net)
+
+        self.acc = tf.metrics.CategoricalAccuracy()
+
+        self.generator = self.build_generator(self.z_dim)
+
+        self.bc = tf.losses.BinaryCrossentropy()
+        self.cc = tf.losses.CategoricalCrossentropy()
+        self.generator_optimizer = tf.keras.optimizers.Adam()
+        self.discriminator_optimizer = tf.keras.optimizers.Adam()
+        self.discriminator_un_r_optimizer = tf.keras.optimizers.Adam()
+        self.discriminator_un_f_optimizer = tf.keras.optimizers.Adam()
 
 
-def build_generator(z_dim): # 生成器
+    def build_generator(self, z_dim): # 生成器
 
-    model = tf.keras.models.Sequential([
-        tf.keras.layers.Dense(256 * 7 * 7),# 全結合
-        tf.keras.layers.Reshape((7,7,256)),# 7*7*256のテンソルに変換
+        model = tf.keras.models.Sequential([
+            tf.keras.layers.Dense(256 * 7 * 7),# 全結合
+            tf.keras.layers.Reshape((7,7,256)),# 7*7*256のテンソルに変換
 
-        tf.keras.layers.Conv2DTranspose(128, kernel_size=3,strides=2, padding="same"),# 転置畳み込み層により、7*7*256を14*14*128のテンソルに変換
+            tf.keras.layers.Conv2DTranspose(128, kernel_size=3,strides=2, padding="same"),# 転置畳み込み層により、7*7*256を14*14*128のテンソルに変換
 
-        tf.keras.layers.BatchNormalization(),# バッチ正規化
-        tf.keras.layers.LeakyReLU(alpha=0.01), # LeakyReLUによる活性化
+            tf.keras.layers.BatchNormalization(),# バッチ正規化
+            tf.keras.layers.LeakyReLU(alpha=0.01), # LeakyReLUによる活性化
 
-        tf.keras.layers.Conv2DTranspose(64,kernel_size=3,strides=1, padding="same"),# 転置畳み込み層により14*14*128を14*14*64のテンソルに変換
+            tf.keras.layers.Conv2DTranspose(64,kernel_size=3,strides=1, padding="same"),# 転置畳み込み層により14*14*128を14*14*64のテンソルに変換
 
-        tf.keras.layers.BatchNormalization(),# バッチ正規化
-        tf.keras.layers.LeakyReLU(alpha=0.01), # LeakyReLUによる活性化
+            tf.keras.layers.BatchNormalization(),# バッチ正規化
+            tf.keras.layers.LeakyReLU(alpha=0.01), # LeakyReLUによる活性化
 
-        tf.keras.layers.Conv2DTranspose(1,kernel_size=3,strides=2,padding="same"),# 転置畳み込み層により14*14*64を28*28*1のテンソルに変換
+            tf.keras.layers.Conv2DTranspose(1,kernel_size=3,strides=2,padding="same"),# 転置畳み込み層により14*14*64を28*28*1のテンソルに変換
 
-        tf.keras.layers.Activation("tanh") # tanh関数を用いた出力層
-    ])
+            tf.keras.layers.Activation("tanh") # tanh関数を用いた出力層
+        ])
 
-    return model
+        return model
 
-def build_discriminator_net(img_shape):
+    def build_discriminator_net(self, img_shape):
 
-    model = tf.keras.models.Sequential([
+        model = tf.keras.models.Sequential([
 
-        tf.keras.layers.Conv2D(32,kernel_size=3 ,strides=2, input_shape=img_shape, padding="same"), # 28*28*1を14*14*32のテンソルにするたたみ込み層
-        tf.keras.layers.LeakyReLU(alpha=0.01),# LeakyReLUによる活性化
+            tf.keras.layers.Conv2D(32,kernel_size=3 ,strides=2, input_shape=img_shape, padding="same"), # 28*28*1を14*14*32のテンソルにするたたみ込み層
+            tf.keras.layers.LeakyReLU(alpha=0.01),# LeakyReLUによる活性化
 
-        tf.keras.layers.Conv2D(64, kernel_size=3, strides=2, input_shape=img_shape, padding="same"),# 14*14*32を7*7*64のテンソルにするたたみ込み層
-        tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.LeakyReLU(alpha=0.01),
+            tf.keras.layers.Conv2D(64, kernel_size=3, strides=2, input_shape=img_shape, padding="same"),# 14*14*32を7*7*64のテンソルにするたたみ込み層
+            tf.keras.layers.BatchNormalization(),
+            tf.keras.layers.LeakyReLU(alpha=0.01),
 
-        tf.keras.layers.Conv2D(128, kernel_size=3, strides=2, input_shape=img_shape, padding="same"),# 7*7*64を3*3*128のテンソルにするたたみ込み層
-        tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.LeakyReLU(alpha=0.01),
+            tf.keras.layers.Conv2D(128, kernel_size=3, strides=2, input_shape=img_shape, padding="same"),# 7*7*64を3*3*128のテンソルにするたたみ込み層
+            tf.keras.layers.BatchNormalization(),
+            tf.keras.layers.LeakyReLU(alpha=0.01),
 
-        tf.keras.layers.Dropout(0.5),
-        tf.keras.layers.Flatten(),
-        tf.keras.layers.Dense(num_classes) # sigmoid関数を通して出力
-    ])
+            tf.keras.layers.Dropout(0.5),
+            tf.keras.layers.Flatten(),
+            tf.keras.layers.Dense(self.num_classes) # sigmoid関数を通して出力
+        ])
 
-    return model
+        return model
 
-def build_discriminator_supervised(discriminator_net):
-    model = tf.keras.models.Sequential([
-        discriminator_net,
-        tf.keras.layers.Activation('softmax')
-    ])
+    def build_discriminator_supervised(self, discriminator_net):
+        model = tf.keras.models.Sequential([
+            discriminator_net,
+            tf.keras.layers.Activation('softmax')
+        ])
 
-    return model
+        return model
 
-def build_discriminator_unsupervised(discriminator_net):
-    def predict(x):
-        prediction = 1.0 - (1.0 / (K.sum(K.exp(x), axis=-1,keepdims=True) + 1.0))
-        return prediction
+    def build_discriminator_unsupervised(self, discriminator_net):
+        def predict(x):
+            prediction = 1.0 - (1.0 / (tf.keras.backend.sum(tf.keras.backend.exp(x), axis=-1,keepdims=True) + 1.0))
+            return prediction
 
-    model = tf.keras.Sequential([
-        discriminator_net,
-        tf.keras.layers.Lambda(predict)
-    ])
+        model = tf.keras.Sequential([
+            discriminator_net,
+            tf.keras.layers.Lambda(predict)
+        ])
 
-    return model
+        return model
 
-def build_gan(generator, discriminator):
-    model = tf.keras.Sequential([
-        generator,
-        discriminator
-    ])
 
-    return model
+    def discriminator_supervised_loss(self, y_true, y_pred):
+        return self.cc(y_true, y_pred)
 
-discriminator_net = build_discriminator_net(img_shape)
+    def d_unsupervised_loss_real(self, real_output):
+        real_loss = self.bc(tf.ones_like(real_output), real_output)
+        return real_loss
 
-discriminator_supervised = build_discriminator_supervised(discriminator_net)
-discriminator_supervised.compile(loss="categorical_crossentropy", metrics=["accuracy"], optimizer="Adam")
+    def d_unsupervised_loss_fake(self, fake_output):
+        fake_loss = self.bc(tf.zeros_like(fake_output), fake_output)
+        return fake_loss
 
-discriminator_unsupervised = build_discriminator_unsupervised(discriminator_net)
-discriminator_unsupervised.compile(loss="binary_crossentropy", metrics=["accuracy"], optimizer="Adam")
+    def discriminator_unsupervised_loss(self, real_loss, fake_loss):
+        total_loss = (real_loss + fake_loss)
+        return total_loss
 
-generator = build_generator(z_dim)
+    def generator_loss(self, fake_output):
+        return self.bc(tf.ones_like(fake_output), fake_output)+ 1e-12
 
-discriminator_unsupervised.trainable = False # 生成器の構築中は識別器のパラメータを固定
+    @tf.function
+    def train_step(self, imgs, labels, imgs_unlabeled):
+        z = tf.random.normal([batch_size, self.z_dim])
 
-gan = build_gan(generator,discriminator_unsupervised) # 生成器の訓練のため、識別器は固定しGANモデルの構築とコンパイルをおこなう。
-gan.compile(loss="binary_crossentropy", optimizer="Adam")
+        with tf.GradientTape() as disc_tape, tf.GradientTape() as gen_tape, tf.GradientTape() as disc_un_r_tape, tf.GradientTape() as disc_un_f_tape:
+            labels_pred = self.discriminator_supervised(imgs,training=True)
+            d_loss_supervised = self.discriminator_supervised_loss(labels, labels_pred)
 
-log_dir = "./logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-summary_writer = tf.summary.create_file_writer(logdir=log_dir)
+            gen_imgs = self.generator(z,training=True)
 
-def train(iterations,batch_size,sample_interval):
+            real_output = self.discriminator_unsupervised(imgs_unlabeled,training=True)
+            fake_output = self.discriminator_unsupervised(gen_imgs,training=True)
+            d_loss_real = self.d_unsupervised_loss_real(real_output)
+            d_loss_fake = self.d_unsupervised_loss_fake(fake_output)
+            d_loss_unsupervised = self.discriminator_unsupervised_loss(d_loss_real, d_loss_fake)
 
-    real = np.ones((batch_size,1)) # 本物の画像ラベルは1
+            g_loss = self.generator_loss(fake_output)
 
-    fake = np.zeros((batch_size,1)) # 偽物の画像ラベルは0
+        self.acc.update_state(labels, labels_pred)
 
-    for iteration in range(iterations):
-        # 識別器の訓練
+        gradients_of_discriminator = disc_tape.gradient(d_loss_supervised, self.discriminator_supervised.trainable_variables)
+        gradients_of_generator = gen_tape.gradient(g_loss, self.generator.trainable_variables)
+        gradients_of_discriminator_un_r = disc_un_r_tape.gradient(d_loss_real, self.discriminator_unsupervised.trainable_variables)
+        gradients_of_discriminator_un_f = disc_un_f_tape.gradient(d_loss_fake, self.discriminator_unsupervised.trainable_variables)
 
-        imgs, labels = dataset.batch_labeled(batch_size)
+        self.generator_optimizer.apply_gradients(zip(gradients_of_generator, self.generator.trainable_variables))
+        self.discriminator_optimizer.apply_gradients(zip(gradients_of_discriminator, self.discriminator_supervised.trainable_variables))
+        self.discriminator_un_r_optimizer.apply_gradients(zip(gradients_of_discriminator_un_r, self.discriminator_unsupervised.trainable_variables))
+        self.discriminator_un_f_optimizer.apply_gradients(zip(gradients_of_discriminator_un_f, self.discriminator_unsupervised.trainable_variables))
 
-        labels = tf.keras.utils.to_categorical(labels, num_classes=num_classes)
+        return g_loss, d_loss_supervised, d_loss_unsupervised
 
-        imgs_unlabeled = dataset.batch_unlabeled(batch_size)
+    def train(self, iterations,batch_size,sample_interval):
+        now = datetime.datetime.now() + datetime.timedelta(hours=9)
+        log_dir = "./logs/SGAN/" + now.strftime("%Y%m%d-%H%M%S")
+        self.summary_writer = tf.summary.create_file_writer(logdir=log_dir)
 
-        # 偽画像のバッチを作成
-        z = np.random.normal(0,1,(batch_size, z_dim))
-        gen_imgs = generator.predict(z)
+        for iteration in range(iterations):
+            # 識別器の訓練
 
-        d_loss_supervised, accuracy = discriminator_supervised.train_on_batch(imgs,labels)
+            imgs, labels = self.dataset.batch_labeled(batch_size)
 
-        d_loss_real = discriminator_unsupervised.train_on_batch(imgs_unlabeled, real)
+            labels = tf.keras.utils.to_categorical(labels, num_classes=self.num_classes)
 
-        d_loss_fake = discriminator_unsupervised.train_on_batch(gen_imgs, fake)
+            imgs_unlabeled = self.dataset.batch_unlabeled(batch_size)
 
-        d_loss_unsupervised = 0.5 * np.add(d_loss_real,d_loss_fake)
+            g_loss, d_loss_supervised, d_loss_unsupervised = self.train_step(tf.constant(imgs), tf.constant(labels), tf.constant(imgs_unlabeled))
+            accuracy = self.acc.result()
 
-        # 生成器の訓練
-        z = np.random.normal(0,1,(batch_size,z_dim))
-        gen_imgs = generator.predict(z)
-        g_loss = gan.train_on_batch(z,np.ones((batch_size,1)))
+            if (iteration + 1) % sample_interval == 0:
+                # 訓練の進捗を出力する
+                print("%d [D loss supervised: %f, acc.: %.2f%%] [D loss unsupervised: %f] [G loss: %f]" % (iteration + 1, d_loss_supervised, 100.0 * accuracy, d_loss_unsupervised, g_loss))
 
-        if (iteration + 1) % sample_interval == 0:
             # 訓練終了後に図示するために、損失と精度を保存する
-            with summary_writer.as_default():
+            with self.summary_writer.as_default():
                 tf.summary.scalar("d_loss_supervised", d_loss_supervised,iteration + 1)
-                tf.summary.scalar("d_loss_unsupervised", d_loss_unsupervised[0],iteration + 1)
+                tf.summary.scalar("d_loss_unsupervised", d_loss_unsupervised,iteration + 1)
                 tf.summary.scalar("g_loss", g_loss,iteration + 1)
                 tf.summary.scalar("accuracy", 100.0 * accuracy,iteration + 1)
+            self.sample_images(iteration + 1)
+            self.acc.reset_states()
 
-            # 訓練の進捗を出力する
-            print("%d [D loss supervised: %f, acc.: %.2f%%] [D loss unsupervised: %f] [G loss: %f]" % (iteration + 1, d_loss_supervised, 100.0 * accuracy, d_loss_unsupervised[0], g_loss))
+    def sample_images(self, step, image_grid_rows=4, image_grid_columns=4):
+
+        # ランダムノイズのサンプリング
+        z = tf.random.normal([16, 100])
+
+        # ランダムノイズを使って画像を生成
+        gen_imgs = self.generator.predict(z)
+
+        # 画像の画素値を[0, 1]の範囲にスケーリング
+        gen_imgs = 0.5 * gen_imgs + 0.5
+
+        # 以下matplot処理
+        for i in range(image_grid_rows * image_grid_columns):
+            name = 'img_' + str(i)
+            with self.summary_writer.as_default():
+                tf.summary.image(name, tf.reshape(gen_imgs[i,:,:,0], [-1,28,28,1]), step=step, max_outputs=1)
 
 iterations = 8000
 batch_size = 32
 sample_interval = 800
 
-train(iterations, batch_size, sample_interval)
+accur = tf.metrics.CategoricalAccuracy()
 
-x, y = dataset.training_set()
-y = tf.keras.utils.to_categorical(y, num_classes=num_classes)
+sgan = SGAN()
+sgan.train(iterations, batch_size, sample_interval)
 
-# Compute classification accuracy on the training set
-_, accuracy = discriminator_supervised.evaluate(x, y)
-print("Training Accuracy: %.2f%%" % (100 * accuracy))
+x_train, y_train = sgan.dataset.training_set()
+y_train = tf.keras.utils.to_categorical(y_train, num_classes=sgan.num_classes)
+x_test, y_test = sgan.dataset.test_set()
+y_test = tf.keras.utils.to_categorical(y_test, num_classes=sgan.num_classes)
 
-x, y = dataset.test_set()
-y = tf.keras.utils.to_categorical(y, num_classes=num_classes)
+# トレーニングデータの分類精度を計算する
+y_out = sgan.discriminator_supervised(x_train)
+accur.update_state(y_train,y_out)
+print("Training Accuracy: %.2f%%" % (100 * accur.result()))
+accur.reset_states()
 
-_, accuracy = discriminator_supervised.evaluate(x,y)
-print("Test Accuracy: %.2f%%" % (100 * accuracy))
+y_out = sgan.discriminator_supervised(x_test)
+accur.update_state(y_test,y_out)
+print("Test Accuracy: %.2f%%" % (100 * accur.result()))
+accur.reset_states()
 
 # Fully supervised classifier with the same network architecture as the SGAN Discriminator
-mnist_classifier = build_discriminator_supervised(build_discriminator_net(img_shape))
-mnist_classifier.compile(loss='categorical_crossentropy',
-                         metrics=['accuracy'],
-                         optimizer="Adam")
-
-imgs, labels = dataset.training_set()
-# One-hot encode labels
-labels = tf.keras.utils.to_categorical(labels, num_classes=num_classes)
+mnist_classifier = sgan.build_discriminator_supervised(sgan.build_discriminator_net(img_shape))
+mnist_classifier.compile(loss='categorical_crossentropy', metrics=['accuracy'], optimizer="Adam")
 
 # Train the classifier
-training = mnist_classifier.fit(x=imgs,
-                                y=labels,
-                                batch_size=32,
-                                epochs=30,
-                                verbose=1)
+training = mnist_classifier.fit(x=x_train, y=y_train, batch_size=32, epochs=30, verbose=1)
 losses = training.history['loss']
 accuracies = training.history['accuracy']
 
-
-x, y = dataset.training_set()
-y = tf.keras.utils.to_categorical(y, num_classes=num_classes)
-
 # Compute classification accuracy on the training set
-_, accuracy = mnist_classifier.evaluate(x, y)
+_, accuracy = mnist_classifier.evaluate(x_train, y_train)
 print("Training Accuracy: %.2f%%" % (100 * accuracy))
 
-x, y = dataset.test_set()
-y = tf.keras.utils.to_categorical(y, num_classes=num_classes)
-
 # Compute classification accuracy on the test set
-_, accuracy = mnist_classifier.evaluate(x, y)
+_, accuracy = mnist_classifier.evaluate(x_test, y_test)
 print("Test Accuracy: %.2f%%" % (100 * accuracy))
