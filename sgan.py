@@ -1,15 +1,6 @@
 import numpy as np
 import tensorflow as tf
 import datetime
-import os
-import show_hidden_outputs
-import animatplot as amp
-import matplotlib.pyplot as plt
-
-
-import numpy as np
-import tensorflow as tf
-import datetime
 
 
 class Dataset:
@@ -253,13 +244,3 @@ class SGAN():
             name = 'img_' + str(i)
             with self.summary_writer.as_default():
                 tf.summary.image(name, tf.reshape(gen_imgs[i,:,:,0], [-1,28,28,1]), step=step, max_outputs=1)
-
-if __name__ == "__main__":
-    gpus = tf.config.experimental.list_physical_devices('GPU')
-    if len(gpus) > 0:
-        for k in range(len(gpus)):
-            tf.config.experimental.set_memory_growth(gpus[k], True)
-
-    iterations = 4000
-    batch_size = 256
-    sample_interval = 50

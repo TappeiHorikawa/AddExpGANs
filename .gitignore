@@ -1,3 +1,7 @@
 logs/
 .vscode/
+__pycache__/
+checkpoint/
 Dataset/
+sampls/
+sgan_MiddleLayer/

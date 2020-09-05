@@ -6,7 +6,7 @@
 ## 作成済みネットワーク
 
 - GAN(MNIST生成)
-- DCGAN(MNIST生成) __ノイズの生成が解消されないため一時中断__
+- DCGAN(MNIST生成)
 - SGAN(MNISTクラス判定)
 
 ## 作成予定ネットワーク
