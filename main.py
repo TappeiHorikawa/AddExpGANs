@@ -5,24 +5,47 @@ import os
 import show_hidden_outputs
 import animatplot as amp
 import matplotlib.pyplot as plt
-
-
-import numpy as np
-import tensorflow as tf
-import datetime
-
+import glob
+from PIL import Image
 
 class Dataset:
     def __init__(self, num_labeled):
         self.num_labeled = num_labeled
 
-        (self.x_train, self.y_train),(self.x_test,self.y_test) = tf.keras.datasets.mnist.load_data()
+        true_file = glob.glob("Dataset/casting_data/train/ok_front/*.jpeg")
+        false_file = glob.glob("Dataset/casting_data/train/def_front/*.jpeg")
+
+        input_true = [np.array(Image.open(load_dir).resize((256,256), Image.NEAREST )) for load_dir in true_file[:500]]
+        input_false = [np.array(Image.open(load_dir).resize((256,256), Image.NEAREST )) for load_dir in false_file[:500]]
+
+        y_true = np.zeros(len(input_true))
+        y_false = np.ones(len(input_false))
+
+        x_train = np.concatenate([input_true, input_false])
+        y_train = np.concatenate([y_true, y_false])
+
+        p = np.random.permutation(len(x_train))
+        self.x_train = x_train[p]
+        self.y_train = y_train[p]
+
+        true_file = glob.glob("Dataset/casting_data/test/ok_front/*.jpeg")
+        false_file = glob.glob("Dataset/casting_data/test/def_front/*.jpeg")
+
+        input_true = [np.array(Image.open(load_dir)) for load_dir in true_file]
+        input_false = [np.array(Image.open(load_dir)) for load_dir in false_file]
+
+        y_true = np.zeros(len(input_true))
+        y_false = np.ones(len(input_false))
+
+        x_test = np.concatenate([input_true, input_false])
+        y_test = np.concatenate([y_true, y_false])
+
+        p = np.random.permutation(len(x_test))
+        self.x_test = x_test[p]
+        self.y_test = y_test[p]
 
         def preprocess_imgs(x):
             x = (x.astype(np.float32) - 127.5) / 127.5
-
-            x = np.expand_dims(x,axis=3)
-
             return x
 
         def preprocess_labels(y):
@@ -56,20 +79,20 @@ class Dataset:
 
 class SGAN():
     def __init__(self):
-        img_rows = 28
-        img_cols = 28
-        channels = 1
+        img_rows = 256
+        img_cols = 256
+        channels = 3
 
-        img_shape = (img_rows, img_cols, channels)
+        self.img_shape = (img_rows, img_cols, channels)
 
-        self.z_dim = 100
+        self.z_dim = 10000
         self.num_classes = 10
 
         self.num_labeled = 100
 
         self.dataset = Dataset(self.num_labeled)
 
-        self.discriminator_net = self.build_discriminator_net(img_shape)
+        self.discriminator_net = self.build_discriminator_net()
 
         self.discriminator_supervised = self.build_discriminator_supervised(self.discriminator_net)
 
@@ -82,53 +105,78 @@ class SGAN():
         self.bc = tf.losses.BinaryCrossentropy()
         self.cc = tf.losses.CategoricalCrossentropy()
         self.generator_optimizer = tf.keras.optimizers.Adam()
-        self.discriminator_optimizer = tf.keras.optimizers.Adam()
-        self.discriminator_un_r_optimizer = tf.keras.optimizers.Adam()
-        self.discriminator_un_f_optimizer = tf.keras.optimizers.Adam()
+        self.discriminator_optimizer = tf.keras.optimizers.Adam(0.0001)
+        self.discriminator_un_r_optimizer = tf.keras.optimizers.Adam(0.0001)
+        self.discriminator_un_f_optimizer = tf.keras.optimizers.Adam(0.0001)
 
 
     def build_generator(self): # 生成器
 
         model = tf.keras.models.Sequential([
-            tf.keras.Input(shape=(100,)),
-            tf.keras.layers.Dense(256 * 7 * 7),# 全結合
-            tf.keras.layers.Reshape((7,7,256)),# 7*7*256のテンソルに変換
-
-            tf.keras.layers.Conv2DTranspose(128, kernel_size=3,strides=2, padding="same"),# 転置畳み込み層により、7*7*256を14*14*128のテンソルに変換
-
-            tf.keras.layers.BatchNormalization(),# バッチ正規化
-            tf.keras.layers.LeakyReLU(alpha=0.01), # LeakyReLUによる活性化
-
-            tf.keras.layers.Conv2DTranspose(64,kernel_size=3,strides=1, padding="same"),# 転置畳み込み層により14*14*128を14*14*64のテンソルに変換
+            tf.keras.Input(shape=(self.z_dim,)),
+            tf.keras.layers.Dense(256 * 8 * 8),# 全結合
+            tf.keras.layers.Reshape((8,8,256)),# 8*8*256のテンソルに変換
+            tf.keras.layers.Conv2DTranspose(128, kernel_size=3,strides=2, padding="same"),# 転置畳み込み層により、8*8*256を16*16*128のテンソルに変換
 
             tf.keras.layers.BatchNormalization(),# バッチ正規化
             tf.keras.layers.LeakyReLU(alpha=0.01), # LeakyReLUによる活性化
 
-            tf.keras.layers.Conv2DTranspose(1,kernel_size=3,strides=2,padding="same"),# 転置畳み込み層により14*14*64を28*28*1のテンソルに変換
+            tf.keras.layers.Conv2DTranspose(64, kernel_size=3,strides=2, padding="same"),# 転置畳み込み層により、16*16*128を32*32*64のテンソルに変換
 
-            tf.keras.layers.Activation("tanh") # tanh関数を用いた出力層
+            tf.keras.layers.BatchNormalization(),# バッチ正規化
+            tf.keras.layers.LeakyReLU(alpha=0.01), # LeakyReLUによる活性化
+
+            tf.keras.layers.Conv2DTranspose(32,kernel_size=3,strides=2, padding="same"),# 転置畳み込み層により32*32*64を64*64*32のテンソルに変換
+
+            tf.keras.layers.BatchNormalization(),# バッチ正規化
+            tf.keras.layers.LeakyReLU(alpha=0.01), # LeakyReLUによる活性化
+
+            tf.keras.layers.Conv2DTranspose(16,kernel_size=3,strides=2, padding="same"),# 転置畳み込み層により64*64*32を128*128*16のテンソルに変換
+
+            tf.keras.layers.BatchNormalization(),# バッチ正規化
+            tf.keras.layers.LeakyReLU(alpha=0.01), # LeakyReLUによる活性化
+
+            tf.keras.layers.Conv2DTranspose(3,kernel_size=3,strides=2,padding="same"),# 転置畳み込み層により128*128*32を256*256*3のテンソルに変換
+
+            tf.keras.layers.Activation("tanh") # tanh関数を用いた出力層 256*256*3
         ])
 
         return model
 
-    def build_discriminator_net(self, img_shape):
+    def build_discriminator_net(self):
 
         model = tf.keras.models.Sequential([
-
-            tf.keras.layers.Conv2D(32,kernel_size=3 ,strides=2, input_shape=img_shape, padding="same"), # 28*28*1を14*14*32のテンソルにするたたみ込み層
+            tf.keras.layers.Conv2D(16,kernel_size=3 ,strides=2, input_shape=self.img_shape, padding="same"), # 256*256*3を128*128*16のテンソルにするたたみ込み層
             tf.keras.layers.LeakyReLU(alpha=0.01),# LeakyReLUによる活性化
-
-            tf.keras.layers.Conv2D(64, kernel_size=3, strides=2, input_shape=img_shape, padding="same"),# 14*14*32を7*7*64のテンソルにするたたみ込み層
-            tf.keras.layers.BatchNormalization(),
-            tf.keras.layers.LeakyReLU(alpha=0.01),
-
-            tf.keras.layers.Conv2D(128, kernel_size=3, strides=2, input_shape=img_shape, padding="same"),# 7*7*64を3*3*128のテンソルにするたたみ込み層
-            tf.keras.layers.BatchNormalization(),
-            tf.keras.layers.LeakyReLU(alpha=0.01),
-
             tf.keras.layers.Dropout(0.5),
+
+            tf.keras.layers.Conv2D(32, kernel_size=3, strides=2, input_shape=self.img_shape, padding="same"),# 128*128*16を64*64*32のテンソルにするたたみ込み層
+            tf.keras.layers.BatchNormalization(),
+            tf.keras.layers.LeakyReLU(alpha=0.01),
+            tf.keras.layers.Dropout(0.5),
+
+            tf.keras.layers.Conv2D(64, kernel_size=3, strides=2, input_shape=self.img_shape, padding="same"),# 64*64*32を32*32*64のテンソルにするたたみ込み層
+            tf.keras.layers.BatchNormalization(),
+            tf.keras.layers.LeakyReLU(alpha=0.01),
+            tf.keras.layers.Dropout(0.5),
+
+            tf.keras.layers.Conv2D(128, kernel_size=3, strides=2, input_shape=self.img_shape, padding="same"),# 32*32*64を16*16*128のテンソルにするたたみ込み層
+            tf.keras.layers.BatchNormalization(),
+            tf.keras.layers.LeakyReLU(alpha=0.01),
+            tf.keras.layers.Dropout(0.5),
+
+            tf.keras.layers.Conv2D(256, kernel_size=3, strides=2, input_shape=self.img_shape, padding="same"),# 16*16*128を8*8*256のテンソルにするたたみ込み層
+            tf.keras.layers.BatchNormalization(),
+            tf.keras.layers.LeakyReLU(alpha=0.01),
+            tf.keras.layers.Dropout(0.5),
+
+            tf.keras.layers.Conv2D(512, kernel_size=3, strides=2, input_shape=self.img_shape, padding="same"),# 8*8*256を4*4*512のテンソルにするたたみ込み層
+            tf.keras.layers.BatchNormalization(),
+            tf.keras.layers.LeakyReLU(alpha=0.01),
+            tf.keras.layers.Dropout(0.5),
+
             tf.keras.layers.Flatten(),
-            tf.keras.layers.Dense(self.num_classes) # sigmoid関数を通して出力
+            tf.keras.layers.Dense(self.num_classes)
         ])
 
         return model
@@ -191,7 +239,6 @@ class SGAN():
             g_loss = self.generator_loss(fake_output)
 
         self.acc.update_state(labels, labels_pred)
-
         gradients_of_discriminator = disc_tape.gradient(d_loss_supervised, self.discriminator_supervised.trainable_variables)
         gradients_of_generator = gen_tape.gradient(g_loss, self.generator.trainable_variables)
         gradients_of_discriminator_un_r = disc_un_r_tape.gradient(d_loss_real, self.discriminator_unsupervised.trainable_variables)
@@ -210,7 +257,7 @@ class SGAN():
         self.summary_writer = tf.summary.create_file_writer(logdir=log_dir)
 
         imgs_unlabeled = self.dataset.batch_unlabeled(batch_size)
-        tf.summary.trace_on(graph=True, profiler=True)
+        #tf.summary.trace_on(graph=True, profiler=True)
         for iteration in range(iterations):
             # 識別器の訓練
 
@@ -234,13 +281,13 @@ class SGAN():
                 self.sample_images(iteration + 1)
                 self.acc.reset_states()
 
-        with self.summary_writer.as_default():
-            tf.summary.trace_export(name="SGAN",step=0,profiler_outdir=log_dir)
+        #with self.summary_writer.as_default():
+        #    tf.summary.trace_export(name="SGAN",step=0,profiler_outdir=log_dir)
 
     def sample_images(self, step, image_grid_rows=4, image_grid_columns=4):
 
         # ランダムノイズのサンプリング
-        z = tf.random.normal([16, 100])
+        z = tf.random.normal([16, self.z_dim])
 
         # ランダムノイズを使って画像を生成
         gen_imgs = self.generator.predict(z)
@@ -252,7 +299,7 @@ class SGAN():
         for i in range(image_grid_rows * image_grid_columns):
             name = 'img_' + str(i)
             with self.summary_writer.as_default():
-                tf.summary.image(name, tf.reshape(gen_imgs[i,:,:,0], [-1,28,28,1]), step=step, max_outputs=1)
+                tf.summary.image(name, tf.reshape(gen_imgs[i,:,:,:], [-1,256,256,3]), step=step, max_outputs=1)
 
 if __name__ == "__main__":
     gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -260,6 +307,11 @@ if __name__ == "__main__":
         for k in range(len(gpus)):
             tf.config.experimental.set_memory_growth(gpus[k], True)
 
-    iterations = 4000
-    batch_size = 256
-    sample_interval = 50
+    iterations = 30000
+    batch_size = 32
+    sample_interval = 1000
+
+    sgan = SGAN()
+    sgan.train(iterations,batch_size, sample_interval)
+    #sgan.generator.summary()
+    #sgan.discriminator_supervised.layers[0].summary()
