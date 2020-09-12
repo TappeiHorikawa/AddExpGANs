@@ -12,11 +12,11 @@ class Dataset:
     def __init__(self, num_labeled):
         self.num_labeled = num_labeled
 
-        true_file = glob.glob("Dataset/casting_data/train/ok_front/*.jpeg")
-        false_file = glob.glob("Dataset/casting_data/train/def_front/*.jpeg")
+        true_file = glob.glob("D:/AddExpGANs/Dataset/wood_data/ok/*.jpg")
+        false_file = glob.glob("D:/AddExpGANs/Dataset/wood_data/def/*.jpg")
 
-        input_true = [np.array(Image.open(load_dir).resize((256,256), Image.NEAREST )) for load_dir in true_file[:500]]
-        input_false = [np.array(Image.open(load_dir).resize((256,256), Image.NEAREST )) for load_dir in false_file[:500]]
+        input_true = [np.array(Image.open(load_dir).resize((256,256), Image.NEAREST )) for load_dir in true_file[:180]]
+        input_false = [np.array(Image.open(load_dir).resize((256,256), Image.NEAREST )) for load_dir in false_file[:180]]
 
         y_true = np.zeros(len(input_true))
         y_false = np.ones(len(input_false))
@@ -28,11 +28,11 @@ class Dataset:
         self.x_train = x_train[p]
         self.y_train = y_train[p]
 
-        true_file = glob.glob("Dataset/casting_data/test/ok_front/*.jpeg")
-        false_file = glob.glob("Dataset/casting_data/test/def_front/*.jpeg")
+        #true_file = glob.glob("Dataset/casting_data/test/ok_front/*.jpeg")
+        #false_file = glob.glob("Dataset/casting_data/test/def_front/*.jpeg")
 
-        input_true = [np.array(Image.open(load_dir)) for load_dir in true_file]
-        input_false = [np.array(Image.open(load_dir)) for load_dir in false_file]
+        input_true = [np.array(Image.open(load_dir)) for load_dir in true_file[180:]]
+        input_false = [np.array(Image.open(load_dir)) for load_dir in false_file[180:]]
 
         y_true = np.zeros(len(input_true))
         y_false = np.ones(len(input_false))
@@ -114,8 +114,14 @@ class SGAN():
 
         model = tf.keras.models.Sequential([
             tf.keras.Input(shape=(self.z_dim,)),
-            tf.keras.layers.Dense(256 * 8 * 8),# 全結合
-            tf.keras.layers.Reshape((8,8,256)),# 8*8*256のテンソルに変換
+            tf.keras.layers.Dense(512 * 4 * 4),# 全結合
+            tf.keras.layers.Reshape((4,4,512)),# 4*4*512のテンソルに変換
+
+            tf.keras.layers.Conv2DTranspose(256, kernel_size=3,strides=2, padding="same"),# 転置畳み込み層により、4*4*512を8*8*256のテンソルに変換
+
+            tf.keras.layers.BatchNormalization(),# バッチ正規化
+            tf.keras.layers.LeakyReLU(alpha=0.01), # LeakyReLUによる活性化
+
             tf.keras.layers.Conv2DTranspose(128, kernel_size=3,strides=2, padding="same"),# 転置畳み込み層により、8*8*256を16*16*128のテンソルに変換
 
             tf.keras.layers.BatchNormalization(),# バッチ正規化
@@ -136,6 +142,11 @@ class SGAN():
             tf.keras.layers.BatchNormalization(),# バッチ正規化
             tf.keras.layers.LeakyReLU(alpha=0.01), # LeakyReLUによる活性化
 
+            tf.keras.layers.Conv2DTranspose(8,kernel_size=3,strides=1, padding="same"),# 転置畳み込み層により128*128*16を128*128*8のテンソルに変換
+
+            tf.keras.layers.BatchNormalization(),# バッチ正規化
+            tf.keras.layers.LeakyReLU(alpha=0.01), # LeakyReLUによる活性化
+
             tf.keras.layers.Conv2DTranspose(3,kernel_size=3,strides=2,padding="same"),# 転置畳み込み層により128*128*32を256*256*3のテンソルに変換
 
             tf.keras.layers.Activation("tanh") # tanh関数を用いた出力層 256*256*3
@@ -146,31 +157,35 @@ class SGAN():
     def build_discriminator_net(self):
 
         model = tf.keras.models.Sequential([
-            tf.keras.layers.Conv2D(16,kernel_size=3 ,strides=2, input_shape=self.img_shape, padding="same"), # 256*256*3を128*128*16のテンソルにするたたみ込み層
+            tf.keras.layers.Conv2D(8,kernel_size=3 ,strides=2, input_shape=self.img_shape, padding="same"), # 256*256*3を128*128*8のテンソルにするたたみ込み層
             tf.keras.layers.LeakyReLU(alpha=0.01),# LeakyReLUによる活性化
             tf.keras.layers.Dropout(0.5),
 
-            tf.keras.layers.Conv2D(32, kernel_size=3, strides=2, input_shape=self.img_shape, padding="same"),# 128*128*16を64*64*32のテンソルにするたたみ込み層
+            tf.keras.layers.Conv2D(16,kernel_size=3 ,strides=2, input_shape=self.img_shape, padding="same"), # 128*128*8を64*64*16のテンソルにするたたみ込み層
+            tf.keras.layers.LeakyReLU(alpha=0.01),# LeakyReLUによる活性化
+            tf.keras.layers.Dropout(0.5),
+
+            tf.keras.layers.Conv2D(32, kernel_size=3, strides=2, input_shape=self.img_shape, padding="same"),# 64*64*16を32*32*32のテンソルにするたたみ込み層
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.LeakyReLU(alpha=0.01),
             tf.keras.layers.Dropout(0.5),
 
-            tf.keras.layers.Conv2D(64, kernel_size=3, strides=2, input_shape=self.img_shape, padding="same"),# 64*64*32を32*32*64のテンソルにするたたみ込み層
+            tf.keras.layers.Conv2D(64, kernel_size=3, strides=2, input_shape=self.img_shape, padding="same"),# 32*32*32を16*16*64のテンソルにするたたみ込み層
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.LeakyReLU(alpha=0.01),
             tf.keras.layers.Dropout(0.5),
 
-            tf.keras.layers.Conv2D(128, kernel_size=3, strides=2, input_shape=self.img_shape, padding="same"),# 32*32*64を16*16*128のテンソルにするたたみ込み層
+            tf.keras.layers.Conv2D(128, kernel_size=3, strides=2, input_shape=self.img_shape, padding="same"),# 16*16*64を8*8*128のテンソルにするたたみ込み層
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.LeakyReLU(alpha=0.01),
             tf.keras.layers.Dropout(0.5),
 
-            tf.keras.layers.Conv2D(256, kernel_size=3, strides=2, input_shape=self.img_shape, padding="same"),# 16*16*128を8*8*256のテンソルにするたたみ込み層
+            tf.keras.layers.Conv2D(256, kernel_size=3, strides=2, input_shape=self.img_shape, padding="same"),# 8*8*128を4*4*256のテンソルにするたたみ込み層
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.LeakyReLU(alpha=0.01),
             tf.keras.layers.Dropout(0.5),
 
-            tf.keras.layers.Conv2D(512, kernel_size=3, strides=2, input_shape=self.img_shape, padding="same"),# 8*8*256を4*4*512のテンソルにするたたみ込み層
+            tf.keras.layers.Conv2D(512, kernel_size=3, strides=2, input_shape=self.img_shape, padding="same"),# 4*4*256を2*2*512のテンソルにするたたみ込み層
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.LeakyReLU(alpha=0.01),
             tf.keras.layers.Dropout(0.5),
@@ -307,7 +322,7 @@ if __name__ == "__main__":
         for k in range(len(gpus)):
             tf.config.experimental.set_memory_growth(gpus[k], True)
 
-    iterations = 30000
+    iterations = 100000
     batch_size = 32
     sample_interval = 1000
 
