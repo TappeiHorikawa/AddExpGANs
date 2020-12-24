@@ -31,8 +31,8 @@ class Dataset:
         #true_file = glob.glob("Dataset/casting_data/test/ok_front/*.jpeg")
         #false_file = glob.glob("Dataset/casting_data/test/def_front/*.jpeg")
 
-        input_true = [np.array(Image.open(load_dir)) for load_dir in true_file[180:]]
-        input_false = [np.array(Image.open(load_dir)) for load_dir in false_file[180:]]
+        input_true = [np.array(Image.open(load_dir).resize((256,256), Image.NEAREST )) for load_dir in true_file[180:]]
+        input_false = [np.array(Image.open(load_dir).resize((256,256), Image.NEAREST )) for load_dir in false_file[180:]]
 
         y_true = np.zeros(len(input_true))
         y_false = np.ones(len(input_false))
@@ -98,16 +98,21 @@ class SGAN():
 
         self.discriminator_unsupervised = self.build_discriminator_unsupervised(self.discriminator_net)
 
-        self.acc = tf.metrics.CategoricalAccuracy()
+        self.acc_train = tf.metrics.CategoricalAccuracy()
+        self.acc_test = tf.metrics.CategoricalAccuracy()
 
         self.generator = self.build_generator()
 
         self.bc = tf.losses.BinaryCrossentropy()
         self.cc = tf.losses.CategoricalCrossentropy()
-        self.generator_optimizer = tf.keras.optimizers.Adam()
-        self.discriminator_optimizer = tf.keras.optimizers.Adam(0.0001)
-        self.discriminator_un_r_optimizer = tf.keras.optimizers.Adam(0.0001)
-        self.discriminator_un_f_optimizer = tf.keras.optimizers.Adam(0.0001)
+        generator_optimizer = tf.keras.optimizers.Adam()
+        discriminator_optimizer = tf.keras.optimizers.Adam(0.0001)
+        discriminator_un_r_optimizer = tf.keras.optimizers.Adam(0.0001)
+        discriminator_un_f_optimizer = tf.keras.optimizers.Adam(0.0001)
+        self.generator_optimizer = tf.keras.mixed_precision.experimental.LossScaleOptimizer(generator_optimizer, loss_scale='dynamic')
+        self.discriminator_optimizer = tf.keras.mixed_precision.experimental.LossScaleOptimizer(discriminator_optimizer, loss_scale='dynamic')
+        self.discriminator_un_r_optimizer = tf.keras.mixed_precision.experimental.LossScaleOptimizer(discriminator_un_r_optimizer, loss_scale='dynamic')
+        self.discriminator_un_f_optimizer = tf.keras.mixed_precision.experimental.LossScaleOptimizer(discriminator_un_f_optimizer, loss_scale='dynamic')
 
 
     def build_generator(self): # 生成器
@@ -149,7 +154,7 @@ class SGAN():
 
             tf.keras.layers.Conv2DTranspose(3,kernel_size=3,strides=2,padding="same"),# 転置畳み込み層により128*128*32を256*256*3のテンソルに変換
 
-            tf.keras.layers.Activation("tanh") # tanh関数を用いた出力層 256*256*3
+            tf.keras.layers.Activation("tanh", dtype='float32') # tanh関数を用いた出力層 256*256*3
         ])
 
         return model
@@ -199,7 +204,7 @@ class SGAN():
     def build_discriminator_supervised(self, discriminator_net):
         model = tf.keras.models.Sequential([
             discriminator_net,
-            tf.keras.layers.Activation('softmax')
+            tf.keras.layers.Activation('softmax', dtype='float32')
         ])
 
         return model
@@ -211,7 +216,7 @@ class SGAN():
 
         model = tf.keras.Sequential([
             discriminator_net,
-            tf.keras.layers.Lambda(predict)
+            tf.keras.layers.Lambda(predict, dtype='float32')
         ])
 
         return model
@@ -247,17 +252,29 @@ class SGAN():
 
             real_output = self.discriminator_unsupervised(imgs_unlabeled,training=True)
             fake_output = self.discriminator_unsupervised(gen_imgs,training=True)
+
             d_loss_real = self.d_unsupervised_loss_real(real_output)
             d_loss_fake = self.d_unsupervised_loss_fake(fake_output)
             d_loss_unsupervised = self.discriminator_unsupervised_loss(d_loss_real, d_loss_fake)
 
             g_loss = self.generator_loss(fake_output)
 
-        self.acc.update_state(labels, labels_pred)
-        gradients_of_discriminator = disc_tape.gradient(d_loss_supervised, self.discriminator_supervised.trainable_variables)
-        gradients_of_generator = gen_tape.gradient(g_loss, self.generator.trainable_variables)
-        gradients_of_discriminator_un_r = disc_un_r_tape.gradient(d_loss_real, self.discriminator_unsupervised.trainable_variables)
-        gradients_of_discriminator_un_f = disc_un_f_tape.gradient(d_loss_fake, self.discriminator_unsupervised.trainable_variables)
+            g_scaled_loss = self.generator_optimizer.get_scaled_loss(g_loss)
+            d_scaled_loss_supervised = self.discriminator_optimizer.get_scaled_loss(d_loss_supervised)
+            d_scaled_loss_real = self.discriminator_un_r_optimizer.get_scaled_loss(d_loss_real)
+            d_scaled_loss_fake = self.discriminator_un_f_optimizer.get_scaled_loss(d_loss_fake)
+
+        self.acc_train.update_state(labels, labels_pred)
+
+        gradients_of_generator_scaled = gen_tape.gradient(g_scaled_loss, self.generator.trainable_variables)
+        gradients_of_discriminator_scaled = disc_tape.gradient(d_scaled_loss_supervised, self.discriminator_supervised.trainable_variables)
+        gradients_of_discriminator_un_r_scaled = disc_un_r_tape.gradient(d_scaled_loss_real, self.discriminator_unsupervised.trainable_variables)
+        gradients_of_discriminator_un_f_scaled = disc_un_f_tape.gradient(d_scaled_loss_fake, self.discriminator_unsupervised.trainable_variables)
+
+        gradients_of_generator = self.generator_optimizer.get_unscaled_gradients(gradients_of_generator_scaled)
+        gradients_of_discriminator = self.discriminator_optimizer.get_unscaled_gradients(gradients_of_discriminator_scaled)
+        gradients_of_discriminator_un_r = self.discriminator_un_r_optimizer.get_unscaled_gradients(gradients_of_discriminator_un_r_scaled)
+        gradients_of_discriminator_un_f = self.discriminator_un_f_optimizer.get_unscaled_gradients(gradients_of_discriminator_un_f_scaled)
 
         self.generator_optimizer.apply_gradients(zip(gradients_of_generator, self.generator.trainable_variables))
         self.discriminator_optimizer.apply_gradients(zip(gradients_of_discriminator, self.discriminator_supervised.trainable_variables))
@@ -281,7 +298,7 @@ class SGAN():
             imgs_unlabeled = self.dataset.batch_unlabeled(batch_size)
 
             g_loss, d_loss_supervised, d_loss_unsupervised = self.train_step(tf.constant(imgs), tf.constant(labels), tf.constant(imgs_unlabeled), tf.constant(batch_size))
-            accuracy = self.acc.result()
+            accuracy = self.acc_train.result()
 
             if (iteration + 1) % sample_interval == 0:
                 # 訓練の進捗を出力する
@@ -294,10 +311,23 @@ class SGAN():
                     tf.summary.scalar("g_loss", g_loss,iteration + 1)
                     tf.summary.scalar("accuracy", 100.0 * accuracy,iteration + 1)
                 self.sample_images(iteration + 1)
-                self.acc.reset_states()
+                self.acc_train.reset_states()
+                self.test()
 
         #with self.summary_writer.as_default():
         #    tf.summary.trace_export(name="SGAN",step=0,profiler_outdir=log_dir)
+
+    @tf.function
+    def test_step(self, imgs, labels):
+        labels_pred = self.discriminator_supervised(imgs,training=False)
+        self.acc_test.update_state(labels, labels_pred)
+
+    def test(self):
+        x_test, y_test = sgan.dataset.test_set()
+        y_test = tf.keras.utils.to_categorical(y_test, num_classes=self.num_classes)
+        self.test_step(x_test, y_test)
+        print("[D test acc.: %.2f%%]" % (100.0 * self.acc_test.result()))
+        self.acc_test.reset_states()
 
     def sample_images(self, step, image_grid_rows=4, image_grid_columns=4):
 
@@ -321,8 +351,10 @@ if __name__ == "__main__":
     if len(gpus) > 0:
         for k in range(len(gpus)):
             tf.config.experimental.set_memory_growth(gpus[k], True)
+    policy = tf.keras.mixed_precision.experimental.Policy("mixed_float16")
+    tf.keras.mixed_precision.experimental.set_policy(policy)
 
-    iterations = 100000
+    iterations = 50000
     batch_size = 32
     sample_interval = 1000
 
